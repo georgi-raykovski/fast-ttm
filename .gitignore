@@ -1,0 +1,30 @@
+# Byte-compiled / optimized / compiled files
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# IDE-specific files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Virtual environment
+.venv/
+env/
+/htmlcov
+
+# Editor-specific files
+.history/
+
+# Testing and coverage
+.coverage
+.coverage.*
