@@ -3,7 +3,7 @@ FastAPI application for TTM Forecasting System
 """
 
 import os
-from typing import List, Union, Dict, Optional
+from typing import List, Union, Optional
 from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
 import pandas as pd
@@ -77,31 +77,32 @@ class PredictionPoint(BaseModel):
     upper_ci: Optional[float] = None
 
 
-class ForecastResponse(BaseModel):
-    """Response model for forecasting"""
-    instance_name: str
+class MetricForecast(BaseModel):
+    """Individual metric forecast result"""
     metric: str
     predictions: List[PredictionPoint]
-    metadata: Dict
     model_name: str
     model_performance: ModelPerformance
     has_confidence_intervals: bool
     total_models_compared: int
     forecast_horizon: int
+    error: Optional[str] = None
+
+
+class ForecastResponse(BaseModel):
+    """Response model for forecasting - consistent array structure"""
+    instance_name: str
+    forecasts: List[MetricForecast]
+    total_forecasts: int
     generated_at: str
 
 
 class TestForecastResponse(BaseModel):
-    """Response model for test forecasting"""
+    """Response model for test forecasting - consistent array structure"""
     data_file: str
     data_points: int
-    predictions: List[PredictionPoint]
-    metadata: Dict
-    model_name: str
-    model_performance: ModelPerformance
-    has_confidence_intervals: bool
-    total_models_compared: int
-    forecast_horizon: int
+    forecasts: List[MetricForecast]
+    total_forecasts: int
     generated_at: str
 
 
@@ -153,20 +154,20 @@ async def forecast_metric(request: ForecastRequest):
     Fetches data for the specified instance and metric(s), then generates forecasts
     """
     try:
-        # Handle single metric (for now, we'll process the first metric if it's a list)
-        if isinstance(request.metric, list):
-            if len(request.metric) == 0:
-                raise HTTPException(status_code=400, detail="At least one metric must be specified")
-            metric = request.metric[0]  # Process first metric for now
+        # Convert single metric to list for consistent processing
+        if isinstance(request.metric, str):
+            metrics = [request.metric]
         else:
-            metric = request.metric
+            metrics = request.metric
 
-        # Validate metric
-        if metric not in ["cpu", "memory", "io"]:
-            raise HTTPException(status_code=400, detail="Metric must be one of: cpu, memory, io")
+        if len(metrics) == 0:
+            raise HTTPException(status_code=400, detail="At least one metric must be specified")
 
-        # Build data URL
-        data_url = config.get_data_url(request.instance_name, metric)
+        # Validate all metrics
+        valid_metrics = ["cpu", "memory", "io"]
+        for metric in metrics:
+            if metric not in valid_metrics:
+                raise HTTPException(status_code=400, detail=f"Metric '{metric}' must be one of: {', '.join(valid_metrics)}")
 
         # Prepare headers for authentication if available
         headers = {}
@@ -178,66 +179,112 @@ async def forecast_metric(request: ForecastRequest):
         forecast_horizon = request.forecast_horizon or config.default_forecast_horizon
         use_enhanced_ttm = request.use_enhanced_ttm if request.use_enhanced_ttm is not None else config.default_use_enhanced_ttm
 
-        # Load data from URL
-        try:
-            series = DataLoader.load_data(
-                data_url,
-                timeout=timeout,
-                headers=headers if headers else None
-            )
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to load data from {data_url}: {str(e)}")
+        forecasts = []
 
-        # Initialize forecaster
-        forecaster = DailyCPUForecaster(
-            series,
-            forecast_horizon=forecast_horizon,
-            use_enhanced_ttm=use_enhanced_ttm
-        )
+        # Process each metric independently
+        for metric in metrics:
+            try:
+                # Build data URL for this metric
+                data_url = config.get_data_url(request.instance_name, metric)
 
-        # Configure plotting for API usage
-        forecaster.configure_plotting(save_plots=config.save_plots, show_plots=config.show_plots)
+                # Load data from URL
+                try:
+                    series = DataLoader.load_data(
+                        data_url,
+                        timeout=timeout,
+                        headers=headers if headers else None
+                    )
+                except Exception as e:
+                    # Add error to forecasts and continue with other metrics
+                    forecasts.append(MetricForecast(
+                        metric=metric,
+                        predictions=[],
+                        model_name="Error",
+                        model_performance=ModelPerformance(mae=0.0, rmse=0.0, mape=0.0),
+                        has_confidence_intervals=False,
+                        total_models_compared=0,
+                        forecast_horizon=forecast_horizon,
+                        error=f"Failed to load data from {data_url}: {str(e)}"
+                    ))
+                    continue
 
-        # Run forecasting
-        forecaster.run_all_models()
+                # Initialize forecaster
+                forecaster = DailyCPUForecaster(
+                    series,
+                    forecast_horizon=forecast_horizon,
+                    use_enhanced_ttm=use_enhanced_ttm
+                )
 
-        # Get best model predictions
-        predictions_result = forecaster.get_best_model_predictions()
+                # Configure plotting for API usage
+                forecaster.configure_plotting(save_plots=config.save_plots, show_plots=config.show_plots)
 
-        if 'error' in predictions_result:
-            raise HTTPException(status_code=500, detail=f"Forecasting failed: {predictions_result['error']}")
+                # Run forecasting
+                forecaster.run_all_models()
 
-        # Format response
-        metadata = predictions_result.get('metadata', {})
-        predictions = []
+                # Get best model predictions
+                predictions_result = forecaster.get_best_model_predictions()
 
-        for pred in predictions_result['predictions']:
-            # Parse prediction format - assuming it's a string like "2024-01-01: 45.2 [40.1, 50.3]"
-            # You may need to adjust this based on actual format
-            prediction_point = PredictionPoint(
-                date=pred.get('date', ''),
-                value=pred.get('value', 0.0),
-                lower_ci=pred.get('lower_ci'),
-                upper_ci=pred.get('upper_ci')
-            )
-            predictions.append(prediction_point)
+                if 'error' in predictions_result:
+                    # Add error to forecasts and continue
+                    forecasts.append(MetricForecast(
+                        metric=metric,
+                        predictions=[],
+                        model_name="Error",
+                        model_performance=ModelPerformance(mae=0.0, rmse=0.0, mape=0.0),
+                        has_confidence_intervals=False,
+                        total_models_compared=0,
+                        forecast_horizon=forecast_horizon,
+                        error=f"Forecasting failed: {predictions_result['error']}"
+                    ))
+                    continue
 
-        model_perf = metadata.get('model_performance', {})
+                # Format predictions
+                metadata = predictions_result.get('metadata', {})
+                predictions = []
+
+                for pred in predictions_result['predictions']:
+                    prediction_point = PredictionPoint(
+                        date=pred.get('date', ''),
+                        value=pred.get('value', 0.0),
+                        lower_ci=pred.get('lower_bound'),
+                        upper_ci=pred.get('upper_bound')
+                    )
+                    predictions.append(prediction_point)
+
+                model_perf = metadata.get('model_performance', {})
+
+                # Add successful forecast
+                forecasts.append(MetricForecast(
+                    metric=metric,
+                    predictions=predictions,
+                    model_name=metadata.get('model_name', 'Unknown'),
+                    model_performance=ModelPerformance(
+                        mae=model_perf.get('mae', 0.0),
+                        rmse=model_perf.get('rmse', 0.0),
+                        mape=model_perf.get('mape', 0.0)
+                    ),
+                    has_confidence_intervals=metadata.get('has_confidence_intervals', False),
+                    total_models_compared=metadata.get('total_models_compared', 0),
+                    forecast_horizon=forecast_horizon
+                ))
+
+            except Exception as e:
+                # Add error to forecasts and continue with other metrics
+                forecasts.append(MetricForecast(
+                    metric=metric,
+                    predictions=[],
+                    model_name="Error",
+                    model_performance=ModelPerformance(mae=0.0, rmse=0.0, mape=0.0),
+                    has_confidence_intervals=False,
+                    total_models_compared=0,
+                    forecast_horizon=forecast_horizon,
+                    error=f"Internal error: {str(e)}"
+                ))
 
         return ForecastResponse(
             instance_name=request.instance_name,
-            metric=metric,
-            predictions=predictions,
-            metadata=metadata,
-            model_name=metadata.get('model_name', 'Unknown'),
-            model_performance=ModelPerformance(
-                mae=model_perf.get('mae', 0.0),
-                rmse=model_perf.get('rmse', 0.0),
-                mape=model_perf.get('mape', 0.0)
-            ),
-            has_confidence_intervals=metadata.get('has_confidence_intervals', False),
-            total_models_compared=metadata.get('total_models_compared', 0),
-            forecast_horizon=forecast_horizon,
+            forecasts=forecasts,
+            total_forecasts=len(forecasts),
             generated_at=datetime.now().isoformat()
         )
 
@@ -327,11 +374,10 @@ async def test_forecast_with_local_data(request: TestForecastRequest):
 
         model_perf = metadata.get('model_performance', {})
 
-        return TestForecastResponse(
-            data_file=request.data_file,
-            data_points=len(series),
+        # Create test metric forecast (using 'test' as metric name)
+        metric_forecast = MetricForecast(
+            metric="test",
             predictions=predictions,
-            metadata=metadata,
             model_name=metadata.get('model_name', 'Unknown'),
             model_performance=ModelPerformance(
                 mae=model_perf.get('mae', 0.0),
@@ -340,7 +386,14 @@ async def test_forecast_with_local_data(request: TestForecastRequest):
             ),
             has_confidence_intervals=metadata.get('has_confidence_intervals', False),
             total_models_compared=metadata.get('total_models_compared', 0),
-            forecast_horizon=forecast_horizon,
+            forecast_horizon=forecast_horizon
+        )
+
+        return TestForecastResponse(
+            data_file=request.data_file,
+            data_points=len(series),
+            forecasts=[metric_forecast],
+            total_forecasts=1,
             generated_at=datetime.now().isoformat()
         )
 
