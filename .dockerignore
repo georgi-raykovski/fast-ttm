@@ -62,3 +62,13 @@ htmlcov/
 Dockerfile*
 docker-compose*.yml
 .dockerignore
+
+# Cache and temporary files
+.cache/
+.pytest_cache/
+*.tmp
+tmp/
+temp/
+
+# Node modules (if any)
+node_modules/

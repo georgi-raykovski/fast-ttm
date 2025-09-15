@@ -1,33 +1,50 @@
-FROM python:3.11-slim
+# Build stage - install dependencies and build packages
+FROM python:3.11-slim as builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create application directory
-WORKDIR /app
-
-# Copy requirements and install dependencies
+# Install Python dependencies to user directory
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+    pip install --user --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
-# Copy env file
-COPY .env .env
+# Production stage - minimal runtime image
+FROM python:3.11-slim
 
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH=/root/.local/bin:$PATH
+
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy Python packages from builder stage
+COPY --from=builder /root/.local /root/.local
+
+# Create application directory
+WORKDIR /app
 
 # Create necessary directories
 RUN mkdir -p /var/log/ttm-forecasting && \
     mkdir -p /app/plots
+
+# Copy application code (use .dockerignore to exclude unnecessary files)
+COPY . .
 
 # Expose port
 EXPOSE 8000

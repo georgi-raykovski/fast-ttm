@@ -268,10 +268,15 @@ async def forecast_metric(request: ForecastRequest):
                 )
 
                 # Configure plotting for API usage
-                # forecaster.configure_plotting(save_plots=settings.SAVE_PLOTS, show_plots=settings.SHOW_PLOTS)
+                forecaster.configure_plotting(save_plots=settings.SAVE_PLOTS, show_plots=settings.SHOW_PLOTS)
 
                 # Run forecasting
                 forecaster.run_all_models()
+
+                # Generate plots
+                forecaster.plot_results()
+                forecaster.plot_model_comparison()
+                forecaster.create_interactive_plot()
 
                 # Get best model predictions
                 predictions_result = forecaster.get_best_model_predictions()
@@ -398,10 +403,15 @@ async def test_forecast_with_local_data(request: TestForecastRequest):
         )
 
         # Configure plotting for API usage
-        # forecaster.configure_plotting(save_plots=settings.SAVE_PLOTS, show_plots=settings.SHOW_PLOTS)
+        forecaster.configure_plotting(save_plots=settings.SAVE_PLOTS, show_plots=settings.SHOW_PLOTS)
 
         # Run forecasting
         forecaster.run_all_models()
+
+        # Generate plots
+        forecaster.plot_results()
+        forecaster.plot_model_comparison()
+        forecaster.create_interactive_plot()
 
         # Get best model predictions
         predictions_result = forecaster.get_best_model_predictions()
@@ -457,7 +467,7 @@ async def test_forecast_with_local_data(request: TestForecastRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    if settings.api_debug:
+    if settings.API_DEBUG:
         # Use import string for reload functionality
         uvicorn.run("app:app", host=settings.API_HOST, port=settings.API_PORT, reload=True)
     else:
