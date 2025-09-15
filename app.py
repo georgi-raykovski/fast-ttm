@@ -55,6 +55,13 @@ class ForecastRequest(BaseModel):
     timeout: Optional[int] = Field(default=None, ge=1, le=300, description="Request timeout in seconds")
 
 
+class TestForecastRequest(BaseModel):
+    """Request model for test forecasting with local data"""
+    data_file: str = Field(default="data.json", description="Local data file to use (data.json or data-long.json)")
+    forecast_horizon: Optional[int] = Field(default=None, ge=1, le=365, description="Number of days to forecast")
+    use_enhanced_ttm: Optional[bool] = Field(default=None, description="Whether to use enhanced TTM models")
+
+
 class ModelPerformance(BaseModel):
     """Model performance metrics"""
     mae: float
@@ -74,6 +81,20 @@ class ForecastResponse(BaseModel):
     """Response model for forecasting"""
     instance_name: str
     metric: str
+    predictions: List[PredictionPoint]
+    metadata: Dict
+    model_name: str
+    model_performance: ModelPerformance
+    has_confidence_intervals: bool
+    total_models_compared: int
+    forecast_horizon: int
+    generated_at: str
+
+
+class TestForecastResponse(BaseModel):
+    """Response model for test forecasting"""
+    data_file: str
+    data_points: int
     predictions: List[PredictionPoint]
     metadata: Dict
     model_name: str
@@ -248,6 +269,92 @@ async def forecast_batch_metrics(requests: List[ForecastRequest]):
     return {"results": results}
 
 
+@app.post("/forecast/test", response_model=TestForecastResponse)
+async def test_forecast_with_local_data(request: TestForecastRequest):
+    """
+    Test forecasting endpoint using local data files
+
+    Uses existing data.json or data-long.json files for testing without external dependencies
+    """
+    try:
+        # Use provided values or defaults from config
+        forecast_horizon = request.forecast_horizon or config.default_forecast_horizon
+        use_enhanced_ttm = request.use_enhanced_ttm if request.use_enhanced_ttm is not None else config.default_use_enhanced_ttm
+
+        # Validate data file choice
+        if request.data_file not in ["data.json", "data-long.json"]:
+            raise HTTPException(status_code=400, detail="data_file must be 'data.json' or 'data-long.json'")
+
+        # Load data from local file
+        try:
+            series = DataLoader.load_data(f"./{request.data_file}")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to load local data from {request.data_file}: {str(e)}")
+
+        # Initialize forecaster
+        forecaster = DailyCPUForecaster(
+            series,
+            forecast_horizon=forecast_horizon,
+            use_enhanced_ttm=use_enhanced_ttm
+        )
+
+        # Configure plotting for API usage
+        forecaster.configure_plotting(save_plots=config.save_plots, show_plots=config.show_plots)
+
+        # Run forecasting
+        forecaster.run_all_models()
+
+        # Get best model predictions
+        predictions_result = forecaster.get_best_model_predictions()
+
+        if 'error' in predictions_result:
+            raise HTTPException(status_code=500, detail=f"Forecasting failed: {predictions_result['error']}")
+
+        # Format response
+        metadata = predictions_result.get('metadata', {})
+        predictions = []
+
+        for pred in predictions_result['predictions']:
+            # Parse prediction format - assuming it's a string like "2024-01-01: 45.2 [40.1, 50.3]"
+            # You may need to adjust this based on actual format
+            prediction_point = PredictionPoint(
+                date=pred.get('date', ''),
+                value=pred.get('value', 0.0),
+                lower_ci=pred.get('lower_bound'),
+                upper_ci=pred.get('upper_bound')
+            )
+            predictions.append(prediction_point)
+
+        model_perf = metadata.get('model_performance', {})
+
+        return TestForecastResponse(
+            data_file=request.data_file,
+            data_points=len(series),
+            predictions=predictions,
+            metadata=metadata,
+            model_name=metadata.get('model_name', 'Unknown'),
+            model_performance=ModelPerformance(
+                mae=model_perf.get('mae', 0.0),
+                rmse=model_perf.get('rmse', 0.0),
+                mape=model_perf.get('mape', 0.0)
+            ),
+            has_confidence_intervals=metadata.get('has_confidence_intervals', False),
+            total_models_compared=metadata.get('total_models_compared', 0),
+            forecast_horizon=forecast_horizon,
+            generated_at=datetime.now().isoformat()
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host=config.api_host, port=config.api_port, debug=config.api_debug)
+    if config.api_debug:
+        # Use import string for reload functionality
+        uvicorn.run("app:app", host=config.api_host, port=config.api_port, reload=True)
+    else:
+        # Use app object for production (no reload)
+        uvicorn.run(app, host=config.api_host, port=config.api_port, reload=False)

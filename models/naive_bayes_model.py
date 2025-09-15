@@ -18,6 +18,7 @@ class NaiveBayesModel(BaseModel):
         self.model = None
         self.bins = None
         self.train_data = None
+        self.feature_names = None
 
     @staticmethod
     def create_lag_features(series: pd.Series, lags: List[int]) -> pd.DataFrame:
@@ -45,6 +46,9 @@ class NaiveBayesModel(BaseModel):
         # Prepare features and target
         X = df.drop(columns=['y', 'y_bin'])
         y = df['y_bin']
+
+        # Store feature names for consistent prediction
+        self.feature_names = X.columns.tolist()
 
         # Fit Gaussian Naive Bayes
         self.model = GaussianNB()
@@ -77,8 +81,11 @@ class NaiveBayesModel(BaseModel):
                     # Use the earliest available value if lag is too large
                     features.append(last_values[0])
 
+            # Create DataFrame with proper feature names for prediction
+            features_df = pd.DataFrame([features], columns=self.feature_names)
+
             # Predict bin
-            pred_bin = self.model.predict([features])[0]
+            pred_bin = self.model.predict(features_df)[0]
 
             # Convert bin back to value (use bin midpoint)
             bin_mid = (self.bins[pred_bin] + self.bins[pred_bin + 1]) / 2
