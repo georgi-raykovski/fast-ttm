@@ -7,8 +7,13 @@ from datetime import timedelta
 from typing import Dict
 from models import (SeasonalNaiveModel, TTMModel, NaiveBayesModel,
                      TTMFineTunedModel, TTMAugmentedModel, TTMEnsembleModel)
-from ensemble import EnsembleMethods
+from models.ensemble import EnsembleMethods
 from visualization import ForecastVisualizer
+from utils.logging_config import get_logger
+from utils.exceptions import TTMLibraryError, ModelNotAvailableError, InsufficientDataError, DataValidationError
+from utils.constants import MIN_DATA_POINTS_FOR_RELIABLE_FORECAST
+
+logger = get_logger(__name__)
 
 
 class DailyCPUForecaster:
@@ -18,15 +23,18 @@ class DailyCPUForecaster:
                  use_enhanced_ttm: bool = False):
         # Validation
         if not isinstance(data, pd.Series):
-            raise ValueError("Data must be a pandas Series")
-        if len(data) < test_size + 7:  # Minimum data requirement
-            raise ValueError(f"Data must have at least {test_size + 7} points for reliable forecasting")
+            raise DataValidationError("Data must be a pandas Series")
+
+        min_required = test_size + MIN_DATA_POINTS_FOR_RELIABLE_FORECAST
+        if len(data) < min_required:
+            raise InsufficientDataError(len(data), min_required)
+
         if forecast_horizon <= 0:
             raise ValueError("Forecast horizon must be positive")
         if test_size <= 0:
             raise ValueError("Test size must be positive")
         if test_size >= len(data):
-            raise ValueError("Test size cannot be larger than data length")
+            raise DataValidationError("Test size cannot be larger than data length")
 
         self.data = data
         self.forecast_horizon = forecast_horizon
@@ -50,71 +58,71 @@ class DailyCPUForecaster:
         # Try to add TTM models with graceful fallback
         try:
             if use_enhanced_ttm:
-                print("Attempting to load enhanced TTM models...")
+                logger.info("Attempting to load enhanced TTM models...")
 
                 # Try basic TTM first
                 try:
                     self.models['TTM_ZeroShot'] = TTMModel()
-                except ImportError as e:
-                    print(f"Basic TTM model unavailable: {e}")
+                except (ImportError, TTMLibraryError, ModelNotAvailableError) as e:
+                    logger.warning(f"Basic TTM model unavailable: {e}")
 
                 # Try enhanced TTM models
                 try:
                     self.models['TTM_Ensemble'] = TTMEnsembleModel()
-                except ImportError as e:
-                    print(f"TTM Ensemble model unavailable: {e}")
+                except (ImportError, TTMLibraryError, ModelNotAvailableError) as e:
+                    logger.warning(f"TTM Ensemble model unavailable: {e}")
 
                 try:
                     self.models['TTM_Augmented'] = TTMAugmentedModel()
-                except ImportError as e:
-                    print(f"TTM Augmented model unavailable: {e}")
+                except (ImportError, TTMLibraryError, ModelNotAvailableError) as e:
+                    logger.warning(f"TTM Augmented model unavailable: {e}")
 
                 # Add fine-tuning model if we have sufficient data
                 if len(self.train) >= 30:
                     try:
                         self.models['TTM_FineTuned'] = TTMFineTunedModel()
-                    except ImportError as e:
-                        print(f"TTM Fine-tuned model unavailable: {e}")
+                    except (ImportError, TTMLibraryError, ModelNotAvailableError) as e:
+                        logger.warning(f"TTM Fine-tuned model unavailable: {e}")
 
             else:
                 # Try to add basic TTM model
                 try:
                     self.models['TTM_ZeroShot'] = TTMModel()
-                except ImportError as e:
-                    print(f"TTM library not available: {e}")
-                    print("Continuing with non-TTM models only")
+                except (ImportError, TTMLibraryError, ModelNotAvailableError) as e:
+                    logger.warning(f"TTM library not available: {e}")
+                    logger.info("Continuing with non-TTM models only")
 
         except Exception as e:
-            print(f"Error loading TTM models: {e}")
-            print("Continuing with SeasonalNaive and NaiveBayes only")
+            logger.error(f"Error loading TTM models: {e}")
+            logger.info("Continuing with SeasonalNaive and NaiveBayes only")
 
-        print(f"Loaded {len(self.models)} models: {list(self.models.keys())}")
+        logger.info(f"Loaded {len(self.models)} models: {list(self.models.keys())}")
 
     def run_all_models(self):
         """Run all individual models"""
-        print("\nRunning all forecasting models...")
+        logger.info("Running all forecasting models...")
 
         for name, model in self.models.items():
             try:
-                print(f"\nRunning {name} Forecast...")
+                logger.info(f"Running {name} forecast...")
                 result = model.fit_and_forecast(
                     self.train, self.test, self.forecast_horizon
                 )
                 self.results[name] = result
 
             except Exception as e:
-                print(f"{name} failed: {e}")
+                logger.error(f"{name} failed: {e}")
                 # Continue with other models
 
         # Create ensemble forecasts
         if len(self.results) >= 2:
-            print("\nCreating Ensemble Forecasts...")
+            logger.info("Creating ensemble forecasts...")
             ensemble_results = self.ensemble_methods.create_ensemble_forecasts(
                 self.results, self.test
             )
             self.results.update(ensemble_results)
 
-            print("\nAdding Confidence Intervals...")
+            logger.info("Adding confidence intervals...")
             self.ensemble_methods.add_confidence_intervals(self.results, ensemble_results)
 
     def get_summary(self) -> pd.DataFrame:

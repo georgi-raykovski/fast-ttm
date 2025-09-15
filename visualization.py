@@ -40,7 +40,6 @@ class ForecastVisualizer:
         if save_plots and not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-
     def plot_results(self, data: pd.Series, results: Dict, forecast_horizon: int,
                     test_size: int) -> None:
         """Plot historical data and forecasting results with confidence intervals"""
@@ -163,7 +162,6 @@ class ForecastVisualizer:
                 plt.show()
             else:
                 plt.close(fig)
-
 
     def plot_model_comparison(self, results: Dict) -> None:
         """Create a bar chart comparing model performance"""

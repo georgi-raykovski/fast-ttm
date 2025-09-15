@@ -14,3 +14,9 @@ uvicorn>=0.24.0
 pydantic>=2.0.0
 python-decouple>=3.8
 git+https://github.com/IBM/tsfm.git
+
+# Production server
+gunicorn>=21.2.0
+
+# System monitoring
+psutil>=5.9.0

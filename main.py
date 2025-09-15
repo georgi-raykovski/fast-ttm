@@ -3,7 +3,10 @@ Main entry point for Daily CPU Usage Forecasting
 """
 
 from forecaster import DailyCPUForecaster
-from data_loader import DataLoader
+from utils.data_loader import DataLoader
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 30,
@@ -24,7 +27,7 @@ def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 
     # Load data (auto-detects file vs URL)
     series = DataLoader.load_data(data_source, **kwargs)
 
-    print(f"Loaded {len(series)} days of data from {series.index.min()} to {series.index.max()}")
+    logger.info(f"Loaded {len(series)} days of data from {series.index.min()} to {series.index.max()}")
 
     # Initialize forecaster and run models
     forecaster = DailyCPUForecaster(series, forecast_horizon=forecast_horizon,
@@ -37,8 +40,10 @@ def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 
     forecaster.run_all_models()
 
     # Display results
-    print("\nModel Performance Summary:")
-    print(forecaster.get_summary().to_string(index=False))
+    logger.info("Model Performance Summary:")
+    summary = forecaster.get_summary().to_string(index=False)
+    logger.info(f"\n{summary}")
+    print(summary)  # Keep console output for user
 
     # Generate plots only if requested
     if generate_plots:
@@ -46,30 +51,40 @@ def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 
         forecaster.plot_results()
 
         # Create interactive HTML plot (with zoom and pan)
-        print("\nCreating interactive plot...")
+        logger.info("Creating interactive plot...")
         forecaster.create_interactive_plot()
     else:
-        print("\nSkipping plot generation for better performance.")
+        logger.info("Skipping plot generation for better performance.")
 
     # Get best model predictions with metadata
     predictions_result = forecaster.get_best_model_predictions()
 
     if 'error' in predictions_result:
+        logger.error(f"Error getting predictions: {predictions_result['error']}")
         print(f"\nError getting predictions: {predictions_result['error']}")
     else:
         metadata = predictions_result.get('metadata', {})
-        print(f"\nBest performing model: {metadata.get('model_name', 'Unknown')}")
+        best_model = metadata.get('model_name', 'Unknown')
+        logger.info(f"Best performing model: {best_model}")
+        print(f"\nBest performing model: {best_model}")
 
         if 'model_performance' in metadata:
             perf = metadata['model_performance']
-            print(f"Model performance - MAE: {perf['mae']:.3f}, RMSE: {perf['rmse']:.3f}, MAPE: {perf['mape']:.2f}%")
+            perf_str = f"Model performance - MAE: {perf['mae']:.3f}, RMSE: {perf['rmse']:.3f}, MAPE: {perf['mape']:.2f}%"
+            logger.info(perf_str)
+            print(perf_str)
 
-        print(f"Confidence intervals available: {metadata.get('has_confidence_intervals', False)}")
-        print(f"Total models compared: {metadata.get('total_models_compared', 0)}")
+        ci_available = metadata.get('has_confidence_intervals', False)
+        logger.info(f"Confidence intervals available: {ci_available}")
+        print(f"Confidence intervals available: {ci_available}")
+        total_models = metadata.get('total_models_compared', 0)
+        logger.info(f"Total models compared: {total_models}")
+        print(f"Total models compared: {total_models}")
 
+        logger.info("Best model predictions generated")
         print("\nBest model predictions:")
         for prediction in predictions_result['predictions']:
-            print(prediction)
+            print(prediction)  # Keep console output for predictions
 
     return forecaster
 

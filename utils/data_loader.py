@@ -7,6 +7,9 @@ import pandas as pd
 import requests
 from typing import Union, Dict
 from urllib.parse import urlparse
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class DataLoader:
@@ -53,7 +56,7 @@ class DataLoader:
                     'Content-Type': 'application/json'
                 }
 
-            print(f"Fetching data from: {url}")
+            logger.info(f"Fetching data from: {url}")
 
             # Make request
             response = requests.get(url, timeout=timeout, headers=headers)
@@ -65,7 +68,7 @@ class DataLoader:
             except json.JSONDecodeError:
                 raise ValueError(f"Response from {url} is not valid JSON")
 
-            print(f"Successfully fetched data from URL")
+            logger.info(f"Successfully fetched {len(raw)} items from URL")
             return DataLoader._process_raw_data(raw, source=url)
 
         except requests.exceptions.Timeout:
@@ -125,7 +128,7 @@ class DataLoader:
             # Create series
             series = pd.Series(df['value'].values, index=df['date'], name='value')
 
-            print(f"Processed {len(series)} data points from {series.index.min()} to {series.index.max()}")
+            logger.info(f"Processed {len(series)} data points from {series.index.min()} to {series.index.max()}")
             return series
 
         except Exception as e:

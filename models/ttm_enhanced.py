@@ -9,6 +9,9 @@ import warnings
 from typing import Dict
 from torch.utils.data import Dataset, DataLoader
 from .base_model import BaseModel
+from utils.metrics import clip_cpu_forecasts
+from utils.constants import TTM_DEFAULT_CONTEXT_LENGTH
+from utils.exceptions import TTMLibraryError, ModelFittingError, ForecastingError
 
 try:
     from tsfm_public import TinyTimeMixerForPrediction
@@ -65,7 +68,7 @@ class TTMFineTunedModel(BaseModel):
         self.train_data = None
 
         if not TTM_AVAILABLE:
-            raise ImportError("TTM library (tsfm_public) not available. Install with: pip install git+https://github.com/IBM/tsfm.git")
+            raise TTMLibraryError()
 
     def fit(self, data: pd.Series) -> None:
         """Fine-tune TTM model on the short time series"""
@@ -156,7 +159,7 @@ class TTMFineTunedModel(BaseModel):
                            for i in range(horizon - len(predictions))]
                 forecast = np.concatenate([predictions, extension])
 
-            return np.clip(forecast, 0, 100)
+            return clip_cpu_forecasts(forecast)
 
         except Exception as e:
             print(f"Fine-tuned TTM forecasting failed: {e}")
@@ -172,7 +175,7 @@ class TTMAugmentedModel(BaseModel):
         self.train_data = None
 
         if not TTM_AVAILABLE:
-            raise ImportError("TTM library (tsfm_public) not available. Install with: pip install git+https://github.com/IBM/tsfm.git")
+            raise TTMLibraryError()
 
     def fit(self, data: pd.Series) -> None:
         """Fit TTM with data augmentation"""
@@ -265,7 +268,7 @@ class TTMAugmentedModel(BaseModel):
                 predictions = output.prediction_outputs.squeeze().numpy()
 
             # Post-process predictions
-            test_forecast = np.clip(predictions[:horizon], 0, 100)
+            test_forecast = clip_cpu_forecasts(predictions[:horizon])
 
             print(f"TTM with augmentation: created {len(augmented_data)} augmented points")
             return test_forecast
@@ -284,7 +287,7 @@ class TTMEnsembleModel(BaseModel):
         self.train_data = None
 
         if not TTM_AVAILABLE:
-            raise ImportError("TTM library (tsfm_public) not available. Install with: pip install git+https://github.com/IBM/tsfm.git")
+            raise TTMLibraryError()
 
     def fit(self, data: pd.Series) -> None:
         """Fit ensemble of TTM and traditional methods"""
@@ -362,7 +365,7 @@ class TTMEnsembleModel(BaseModel):
             )
 
             # Clip to reasonable bounds
-            ensemble_forecast = np.clip(ensemble_forecast, 0, 100)
+            ensemble_forecast = clip_cpu_forecasts(ensemble_forecast)
 
             print(f"TTM ensemble: combined TTM + ExponentialSmoothing + ARIMA")
             return ensemble_forecast

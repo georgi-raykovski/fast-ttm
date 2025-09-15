@@ -11,7 +11,12 @@ from datetime import datetime
 from decouple import config as env_config
 
 from forecaster import DailyCPUForecaster
-from data_loader import DataLoader
+from utils.data_loader import DataLoader
+import psutil
+import time
+
+# Track application start time for uptime calculation
+app_start_time = time.time()
 
 
 # Configuration
@@ -111,12 +116,26 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     timestamp: str
+    uptime_seconds: Optional[float] = None
+    memory_usage_mb: Optional[float] = None
+    available_models: Optional[List[str]] = None
 
 
 class AvailableModelsResponse(BaseModel):
     """Available models response"""
     models: List[str]
     enhanced_models: List[str]
+
+
+class MetricsResponse(BaseModel):
+    """System metrics response"""
+    cpu_percent: float
+    memory_percent: float
+    memory_used_mb: float
+    memory_available_mb: float
+    disk_usage_percent: float
+    uptime_seconds: float
+    request_count: Optional[int] = None
 
 
 # FastAPI app
@@ -129,12 +148,43 @@ app = FastAPI(
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint"""
-    return HealthResponse(
-        status="healthy",
-        version="1.0.0",
-        timestamp=datetime.now().isoformat()
-    )
+    """Enhanced health check endpoint with system metrics"""
+    try:
+        # Calculate uptime
+        uptime = time.time() - app_start_time
+
+        # Get memory usage
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        memory_usage_mb = memory_info.rss / 1024 / 1024
+
+        # Get available models (simplified check)
+        available_models = ["SeasonalNaive", "NaiveBayes"]
+
+        # Check if TTM is available
+        try:
+            from models.ttm_model import TTM_AVAILABLE
+            if TTM_AVAILABLE:
+                available_models.append("TTM")
+        except:
+            pass
+
+        return HealthResponse(
+            status="healthy",
+            version="1.0.0",
+            timestamp=datetime.now().isoformat(),
+            uptime_seconds=uptime,
+            memory_usage_mb=memory_usage_mb,
+            available_models=available_models
+        )
+
+    except Exception as e:
+        # If health check itself fails, return minimal response
+        return HealthResponse(
+            status="degraded",
+            version="1.0.0",
+            timestamp=datetime.now().isoformat()
+        )
 
 
 @app.get("/models", response_model=AvailableModelsResponse)
@@ -143,6 +193,34 @@ async def get_available_models():
     return AvailableModelsResponse(
         models=["SeasonalNaive", "NaiveBayes", "TTM"],
         enhanced_models=["TTMFineTuned", "TTMAugmented", "TTMEnsemble"]
+    )
+
+
+@app.get("/metrics", response_model=MetricsResponse)
+async def get_system_metrics():
+    """Get detailed system metrics for monitoring"""
+    # CPU usage
+    cpu_percent = psutil.cpu_percent(interval=1)
+
+    # Memory usage
+    memory = psutil.virtual_memory()
+    memory_used_mb = (memory.total - memory.available) / 1024 / 1024
+    memory_available_mb = memory.available / 1024 / 1024
+
+    # Disk usage
+    disk = psutil.disk_usage('/')
+    disk_usage_percent = (disk.used / disk.total) * 100
+
+    # Uptime
+    uptime = time.time() - app_start_time
+
+    return MetricsResponse(
+        cpu_percent=cpu_percent,
+        memory_percent=memory.percent,
+        memory_used_mb=memory_used_mb,
+        memory_available_mb=memory_available_mb,
+        disk_usage_percent=disk_usage_percent,
+        uptime_seconds=uptime
     )
 
 

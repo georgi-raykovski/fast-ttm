@@ -6,7 +6,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, Tuple
 import numpy as np
 import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
+from utils.metrics import calculate_metrics, clip_cpu_forecasts
+from utils.exceptions import DataValidationError, InsufficientDataError
 
 
 class BaseModel(ABC):
@@ -28,10 +29,7 @@ class BaseModel(ABC):
 
     def calculate_metrics(self, y_true: np.array, y_pred: np.array) -> Dict:
         """Calculate evaluation metrics"""
-        mae = mean_absolute_error(y_true, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-        mape = mean_absolute_percentage_error(y_true, y_pred) * 100
-        return {'MAE': mae, 'RMSE': rmse, 'MAPE': mape}
+        return calculate_metrics(y_true, y_pred)
 
     def fit_and_forecast(self, train_data: pd.Series, test_data: pd.Series,
                         forecast_horizon: int) -> Dict:
@@ -47,8 +45,8 @@ class BaseModel(ABC):
         metrics = self.calculate_metrics(test_data, test_forecast)
 
         # Clip forecasts to reasonable bounds for CPU usage
-        test_forecast = np.clip(test_forecast, 0, 100)
-        future_forecast = np.clip(future_forecast, 0, 100)
+        test_forecast = clip_cpu_forecasts(test_forecast)
+        future_forecast = clip_cpu_forecasts(future_forecast)
 
         return {
             'metrics': metrics,

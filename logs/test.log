@@ -1,0 +1,4 @@
+2025-09-15 15:40:30,299 - ttm_forecaster - DEBUG - Debug message to file
+2025-09-15 15:40:30,299 - ttm_forecaster - INFO - Info message to file
+2025-09-15 15:40:30,299 - ttm_forecaster - WARNING - Warning message to file
+2025-09-15 15:40:30,307 - ttm_forecaster.data_loader - INFO - Processed 60 data points from 2025-07-15 00:00:00 to 2025-09-12 00:00:00

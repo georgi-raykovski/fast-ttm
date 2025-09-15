@@ -5,19 +5,13 @@ Ensemble methods for combining multiple forecasting models
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple
-from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
+from utils.metrics import calculate_metrics, clip_cpu_forecasts
+from utils.constants import CONFIDENCE_Z_SCORE
 
 
 class EnsembleMethods:
     """Methods for combining forecasts from multiple models"""
 
-    @staticmethod
-    def calculate_metrics(y_true: np.array, y_pred: np.array) -> Dict:
-        """Calculate evaluation metrics"""
-        mae = mean_absolute_error(y_true, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-        mape = mean_absolute_percentage_error(y_true, y_pred) * 100
-        return {'MAE': mae, 'RMSE': rmse, 'MAPE': mape}
 
     @staticmethod
     def simple_average(forecasts: List[np.ndarray]) -> np.ndarray:
@@ -63,7 +57,7 @@ class EnsembleMethods:
         avg_future = self.simple_average(future_forecasts)
 
         ensemble_results['Ensemble_Average'] = {
-            'metrics': self.calculate_metrics(test_data, avg_test),
+            'metrics': calculate_metrics(test_data, avg_test),
             'test_forecast': avg_test,
             'future_forecast': avg_future
         }
@@ -74,7 +68,7 @@ class EnsembleMethods:
         weighted_future = self.weighted_average(future_forecasts, weights)
 
         ensemble_results['Ensemble_Weighted'] = {
-            'metrics': self.calculate_metrics(test_data, weighted_test),
+            'metrics': calculate_metrics(test_data, weighted_test),
             'test_forecast': weighted_test,
             'future_forecast': weighted_future
         }
@@ -84,7 +78,7 @@ class EnsembleMethods:
         median_future = self.median_ensemble(future_forecasts)
 
         ensemble_results['Ensemble_Median'] = {
-            'metrics': self.calculate_metrics(test_data, median_test),
+            'metrics': calculate_metrics(test_data, median_test),
             'test_forecast': median_test,
             'future_forecast': median_future
         }
@@ -109,8 +103,8 @@ class EnsembleMethods:
 
             # Add 95% confidence intervals to ensemble results
             for name, result in ensemble_results.items():
-                # 95% confidence intervals (±1.96 std)
-                result['test_lower'] = np.clip(result['test_forecast'] - 1.96 * test_std, 0, 100)
-                result['test_upper'] = np.clip(result['test_forecast'] + 1.96 * test_std, 0, 100)
-                result['future_lower'] = np.clip(result['future_forecast'] - 1.96 * future_std, 0, 100)
-                result['future_upper'] = np.clip(result['future_forecast'] + 1.96 * future_std, 0, 100)
+                # 95% confidence intervals (±Z-score std)
+                result['test_lower'] = clip_cpu_forecasts(result['test_forecast'] - CONFIDENCE_Z_SCORE * test_std)
+                result['test_upper'] = clip_cpu_forecasts(result['test_forecast'] + CONFIDENCE_Z_SCORE * test_std)
+                result['future_lower'] = clip_cpu_forecasts(result['future_forecast'] - CONFIDENCE_Z_SCORE * future_std)
+                result['future_upper'] = clip_cpu_forecasts(result['future_forecast'] + CONFIDENCE_Z_SCORE * future_std)

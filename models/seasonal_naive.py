@@ -7,6 +7,9 @@ import pandas as pd
 from typing import Dict
 from sklearn.metrics import mean_absolute_error
 from .base_model import BaseModel
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class SeasonalNaiveModel(BaseModel):
@@ -47,7 +50,7 @@ class SeasonalNaiveModel(BaseModel):
         self.seasonal_pattern = data.iloc[-best_season:].values
         self.is_fitted = True
 
-        print(f"Best seasonal pattern: {self.best_season_length} days")
+        logger.info(f"Best seasonal pattern: {self.best_season_length} days")
 
     def forecast(self, horizon: int) -> np.ndarray:
         """Generate forecasts using the best seasonal pattern"""

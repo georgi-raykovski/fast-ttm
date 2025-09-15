@@ -8,6 +8,11 @@ import torch
 import warnings
 from typing import Dict
 from .base_model import BaseModel
+from utils.logging_config import get_logger
+from utils.constants import TTM_DEFAULT_CONTEXT_LENGTH
+from utils.exceptions import TTMLibraryError, ForecastingError
+
+logger = get_logger(__name__)
 
 try:
     from tsfm_public import TinyTimeMixerForPrediction
@@ -22,11 +27,11 @@ class TTMModel(BaseModel):
     def __init__(self):
         super().__init__("TTM_ZeroShot")
         self.model = None
-        self.context_length = 512
+        self.context_length = TTM_DEFAULT_CONTEXT_LENGTH
         self.train_data = None
 
         if not TTM_AVAILABLE:
-            raise ImportError("TTM library (tsfm_public) not available. Install with: pip install git+https://github.com/IBM/tsfm.git")
+            raise TTMLibraryError()
 
     def fit(self, data: pd.Series) -> None:
         """Fit the model by loading pre-trained TTM and preparing data"""
@@ -39,10 +44,10 @@ class TTMModel(BaseModel):
             self.train_data = data.values
             self.is_fitted = True
 
-            print(f"TTM model loaded: {model_name}")
+            logger.info(f"TTM model loaded: {model_name}")
 
         except Exception as e:
-            print(f"Failed to load TTM model: {e}")
+            logger.error(f"Failed to load TTM model: {e}")
             raise
 
     def _prepare_input_data(self) -> np.ndarray:
@@ -86,10 +91,11 @@ class TTMModel(BaseModel):
                     np.full(horizon - len(predictions), predictions[-1])
                 ])
 
-            print(f"TTM used context length: {self.context_length}, predicted {len(predictions)} points")
+            logger.info(f"TTM used context length: {self.context_length}, predicted {len(predictions)} points")
             return forecast
 
         except Exception as e:
-            print(f"TTM forecasting failed: {e}")
+            logger.error(f"TTM forecasting failed: {e}")
+            raise ForecastingError("TTM_ZeroShot", str(e))
             # Fallback to naive forecast
             return np.full(horizon, self.train_data[-1])

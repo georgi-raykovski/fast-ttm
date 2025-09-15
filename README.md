@@ -7,7 +7,10 @@ A modular time series forecasting system for CPU usage prediction using multiple
 - **Multiple Models**: Seasonal Naive, TTM Zero-Shot, and Naive Bayes
 - **Ensemble Methods**: Simple average, weighted average, and median ensemble
 - **Confidence Intervals**: 95% prediction intervals for ensemble models
-- **Modular Architecture**: Clean separation of models, ensemble methods, and visualization
+- **Production-Ready API**: FastAPI web service with health checks and monitoring
+- **Professional Logging**: Configurable logging system with structured output
+- **Error Handling**: Custom exceptions with detailed error context
+- **Modular Architecture**: Clean separation of models, utilities, and services
 - **Automatic Model Selection**: Finds the best seasonal patterns and parameters
 
 ## Installation
@@ -56,7 +59,9 @@ forecaster.run_all_models()
 # Get results
 print(forecaster.get_summary())
 forecaster.plot_results()
-forecaster.plot_model_comparison()
+
+# Create interactive plot
+forecaster.create_interactive_plot()
 ```
 
 ## Architecture
@@ -64,14 +69,22 @@ forecaster.plot_model_comparison()
 ```
 ├── main.py                 # Entry point
 ├── forecaster.py          # Main orchestrator class
-├── ensemble.py            # Ensemble methods
 ├── visualization.py       # Plotting utilities
+├── app.py                 # FastAPI web service
 ├── models/                # Model classes
 │   ├── __init__.py
 │   ├── base_model.py      # Base model interface
+│   ├── ensemble.py        # Ensemble methods
 │   ├── seasonal_naive.py  # Seasonal naive model
 │   ├── ttm_model.py       # TTM zero-shot model
+│   ├── ttm_enhanced.py    # Enhanced TTM models
 │   └── naive_bayes_model.py # Naive Bayes model
+├── utils/                 # Shared utilities
+│   ├── constants.py       # Application constants
+│   ├── data_loader.py     # Data loading utilities
+│   ├── exceptions.py      # Custom exceptions
+│   ├── logging_config.py  # Logging configuration
+│   └── metrics.py         # Shared metrics utilities
 └── requirements.txt       # Dependencies
 ```
 
@@ -160,6 +173,9 @@ The system provides:
 - Interactive HTML plots with zoom/pan capabilities
 - Automatic plot saving to `./plots/` directory
 - Best model recommendations
+- Structured logging with configurable levels
+- Professional error handling with custom exceptions
+- Health and performance monitoring endpoints
 
 ## Visualization Features
 
@@ -182,3 +198,75 @@ All plots are automatically saved to `./plots/`:
 - `overview_comparison.png`
 - `model_comparison.png`
 - `interactive_forecast.html` (interactive)
+
+## Production Deployment
+
+The application includes a FastAPI web service ready for production deployment.
+
+### Quick Start with Docker
+
+```bash
+# Build and run the container
+docker-compose up -d
+
+# Check application health
+curl http://localhost:8000/health
+
+# View logs
+docker-compose logs -f ttm-api
+```
+
+### Production Server Options
+
+#### Option 1: Docker (Recommended)
+```bash
+# Production deployment
+docker-compose up -d
+
+# Scale workers
+docker-compose up -d --scale ttm-api=3
+```
+
+#### Option 2: Gunicorn (Direct)
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run production server
+gunicorn -c gunicorn.conf.py app:app
+```
+
+#### Option 3: Development Server
+```bash
+# For testing only
+python app.py
+```
+
+### API Endpoints
+
+- **POST /forecast** - Generate forecasts for CPU/memory/IO metrics
+- **POST /forecast/test** - Test with local data files
+- **POST /forecast/batch** - Batch forecasting for multiple metrics
+- **GET /health** - Health check with system metrics
+- **GET /metrics** - Detailed system monitoring
+- **GET /models** - Available forecasting models
+
+### Configuration
+
+Copy `.env.example` to `.env` and configure for your environment:
+
+```bash
+# Production example
+DATA_BASE_URL=https://your-metrics-api.com
+API_DEBUG=false
+LOG_LEVEL=INFO
+WORKERS=4
+```
+
+### Monitoring
+
+The application provides built-in monitoring:
+
+- **Health Check**: `GET /health` - Application status and metrics
+- **System Metrics**: `GET /metrics` - CPU, memory, disk usage
+- **Docker Health Check**: Automatic container health monitoring
