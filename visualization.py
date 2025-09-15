@@ -2,8 +2,8 @@
 Visualization utilities for forecasting results
 """
 
-import numpy as np
 import pandas as pd
+import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import timedelta
@@ -15,6 +15,16 @@ class ForecastVisualizer:
     """Visualization utilities for forecasting results"""
 
     def __init__(self, save_plots: bool = True, show_plots: bool = False, output_dir: str = './plots'):
+        # Set matplotlib backend to prevent GUI windows when not showing plots
+        if not show_plots:
+            current_backend = matplotlib.get_backend()
+            if current_backend != 'Agg':
+                try:
+                    matplotlib.use('Agg', force=True)  # Non-interactive backend
+                except:
+                    # If backend switch fails, we'll still work but might show windows
+                    pass
+
         # Set style
         plt.style.use('seaborn-v0_8-darkgrid')
         sns.set_palette("husl")
@@ -30,15 +40,6 @@ class ForecastVisualizer:
         if save_plots and not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-    def get_best_model(self, results: Dict) -> str:
-        """Return the name of the best performing model (including ensemble models)"""
-        best_mae = float('inf')
-        best_model = None
-        for name, res in results.items():
-            if res['metrics']['MAE'] < best_mae:
-                best_mae = res['metrics']['MAE']
-                best_model = name
-        return best_model
 
     def plot_results(self, data: pd.Series, results: Dict, forecast_horizon: int,
                     test_size: int) -> None:
@@ -86,9 +87,15 @@ class ForecastVisualizer:
             plt.suptitle("Individual Model Forecasts", fontsize=16)
             plt.tight_layout()
 
-            # Enable interactive navigation
-            if hasattr(plt.get_current_fig_manager(), 'toolbar'):
-                plt.get_current_fig_manager().toolbar.pan()
+            # Enable interactive navigation (only for interactive backends)
+            if self.show_plots and matplotlib.get_backend() != 'Agg':
+                try:
+                    fig_manager = plt.get_current_fig_manager()
+                    if fig_manager and hasattr(fig_manager, 'toolbar') and fig_manager.toolbar:
+                        fig_manager.toolbar.pan()
+                except:
+                    # Skip interactive features if they fail
+                    pass
 
             # Save plot
             if self.save_plots:
@@ -98,7 +105,7 @@ class ForecastVisualizer:
             if self.show_plots:
                 plt.show()
             else:
-                plt.close()
+                plt.close(fig)
 
         # Plot 2: Ensemble Models with Confidence Intervals
         if ensemble_models:
@@ -137,9 +144,15 @@ class ForecastVisualizer:
             plt.suptitle("Ensemble Model Forecasts", fontsize=16)
             plt.tight_layout()
 
-            # Enable interactive navigation
-            if hasattr(plt.get_current_fig_manager(), 'toolbar'):
-                plt.get_current_fig_manager().toolbar.pan()
+            # Enable interactive navigation (only for interactive backends)
+            if self.show_plots and matplotlib.get_backend() != 'Agg':
+                try:
+                    fig_manager = plt.get_current_fig_manager()
+                    if fig_manager and hasattr(fig_manager, 'toolbar') and fig_manager.toolbar:
+                        fig_manager.toolbar.pan()
+                except:
+                    # Skip interactive features if they fail
+                    pass
 
             # Save plot
             if self.save_plots:
@@ -149,56 +162,8 @@ class ForecastVisualizer:
             if self.show_plots:
                 plt.show()
             else:
-                plt.close()
+                plt.close(fig)
 
-    def plot_overview(self, data: pd.Series, results: Dict, forecast_horizon: int,
-                     test_size: int) -> None:
-        """Plot overview with all models for comparison"""
-
-        plt.figure(figsize=(16, 8))
-
-        # Plot historical data
-        plt.plot(data.index, data.values, label='Historical CPU', color='blue', linewidth=3)
-
-        # Create future dates and test dates
-        future_dates = pd.date_range(
-            data.index[-1] + timedelta(days=1),
-            periods=forecast_horizon
-        )
-        test_dates = data.index[-test_size:]
-
-        # Colors for different models
-        colors = ['red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive']
-        color_idx = 0
-
-        # Plot all models
-        for name, res in results.items():
-            color = colors[color_idx % len(colors)]
-            color_idx += 1
-
-            # Plot with different line styles for test vs future
-            plt.plot(test_dates, res['test_forecast'],
-                    color=color, linestyle='--', linewidth=2, alpha=0.8)
-            plt.plot(future_dates, res['future_forecast'],
-                    label=f'{name}', color=color, linestyle=':', linewidth=2)
-
-        plt.title("All Models Comparison Overview", fontsize=16)
-        plt.xlabel("Date", fontsize=12)
-        plt.ylabel("CPU Usage (%)", fontsize=12)
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.grid(True, alpha=0.3)
-        plt.tight_layout()
-
-        # Enable interactive navigation
-        if hasattr(plt.get_current_fig_manager(), 'toolbar'):
-            plt.get_current_fig_manager().toolbar.pan()
-
-        # Save plot
-        if self.save_plots:
-            plt.savefig(f'{self.output_dir}/overview_comparison.png', dpi=300, bbox_inches='tight')
-            print(f"Overview plot saved to {self.output_dir}/overview_comparison.png")
-
-        plt.show()
 
     def plot_model_comparison(self, results: Dict) -> None:
         """Create a bar chart comparing model performance"""
@@ -244,7 +209,10 @@ class ForecastVisualizer:
             plt.savefig(f'{self.output_dir}/model_comparison.png', dpi=300, bbox_inches='tight')
             print(f"Model comparison plot saved to {self.output_dir}/model_comparison.png")
 
-        plt.show()
+        if self.show_plots:
+            plt.show()
+        else:
+            plt.close(fig)
 
     def create_summary_table(self, results: Dict) -> pd.DataFrame:
         """Create a summary DataFrame of model performance"""
