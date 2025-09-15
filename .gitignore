@@ -22,6 +22,9 @@ Thumbs.db
 env/
 /htmlcov
 
+# Environment variables
+.env
+
 # Editor-specific files
 .history/
 
