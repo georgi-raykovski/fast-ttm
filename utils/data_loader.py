@@ -8,6 +8,9 @@ import requests
 from typing import Union, Dict
 from urllib.parse import urlparse
 from utils.logging_config import get_logger
+from utils.cache import get_cache
+from utils.constants import DATA_CACHE_MAX_AGE
+from utils.error_handlers import retry_on_failure
 
 logger = get_logger(__name__)
 
@@ -30,6 +33,7 @@ class DataLoader:
             raise ValueError(f"Invalid JSON format in file: {file_path}")
 
     @staticmethod
+    @retry_on_failure(max_retries=3, delay=1.0, backoff=2.0)
     def load_from_url(url: str, timeout: int = 30, headers: Dict[str, str] = None) -> pd.Series:
         """
         Load data from a URL endpoint
@@ -135,18 +139,37 @@ class DataLoader:
             raise ValueError(f"Failed to process data from {source}: {str(e)}")
 
     @staticmethod
-    def load_data(source: str, **kwargs) -> pd.Series:
+    def load_data(source: str, use_cache: bool = True, **kwargs) -> pd.Series:
         """
-        Load data from file or URL (auto-detect)
+        Load data from file or URL (auto-detect) with caching
 
         Args:
             source: File path or URL
+            use_cache: Whether to use caching for URL requests
             **kwargs: Additional arguments for URL loading (timeout, headers)
 
         Returns:
             pd.Series: Time series data
         """
-        if source.startswith(('http://', 'https://')):
+        # Only cache URL requests (local files are fast to load)
+        if source.startswith(('http://', 'https://')) and use_cache:
+            cache = get_cache()
+            cache.max_age = DATA_CACHE_MAX_AGE
+            cache_key = cache.cache_key_for_data(source, **kwargs)
+
+            # Try cache first
+            cached_result = cache.get(cache_key)
+            if cached_result is not None:
+                logger.info(f"Using cached data for {source}")
+                return cached_result
+
+            # Load fresh data and cache it
+            logger.info(f"Loading fresh data from {source}")
+            result = DataLoader.load_from_url(source, **kwargs)
+            cache.set(cache_key, result)
+            return result
+
+        elif source.startswith(('http://', 'https://')):
             return DataLoader.load_from_url(source, **kwargs)
         else:
             return DataLoader.load_from_file(source)

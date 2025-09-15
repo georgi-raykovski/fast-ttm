@@ -40,3 +40,6 @@ plots/
 ttm_forecasts.png
 ttm_forecast_results.json
 ttm_finetuned/
+
+logs/
+cache/

@@ -2,9 +2,11 @@ version: '3.8'
 
 services:
   ttm-api:
+    container_name: ttm-api
     build:
       context: .
       dockerfile: Dockerfile
+    image: ttm-api:latest
     ports:
       - "8000:8000"
     env_file:
@@ -19,6 +21,18 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    environment:
+      # Optional overrides; decouple will use these if set
+      API_HOST: "0.0.0.0"
+      API_PORT: 8000
+      API_DEBUG: "False"
+      DATA_BASE_URL: "http://localhost:8080"
+      REQUEST_TIMEOUT: 30
+      AUTH_TOKEN: ""
+      DEFAULT_FORECAST_HORIZON: 30
+      DEFAULT_USE_ENHANCED_TTM: "False"
+      SAVE_PLOTS: "False"
+      SHOW_PLOTS: "False"
 
 networks:
   default:

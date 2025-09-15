@@ -4,6 +4,13 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create application directory
 WORKDIR /app
 
@@ -14,6 +21,9 @@ RUN pip install --upgrade pip && \
 
 # Copy application code
 COPY . .
+# Copy env file
+COPY .env .env
+
 
 # Create necessary directories
 RUN mkdir -p /var/log/ttm-forecasting && \

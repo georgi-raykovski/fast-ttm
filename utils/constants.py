@@ -24,3 +24,8 @@ DEFAULT_TEST_SIZE = 14
 
 # Validation settings
 MIN_DATA_POINTS_FOR_RELIABLE_FORECAST = 7
+
+# Caching settings
+DEFAULT_CACHE_MAX_AGE = 3600  # 1 hour in seconds
+FORECAST_CACHE_MAX_AGE = 1800  # 30 minutes for forecasts
+DATA_CACHE_MAX_AGE = 7200  # 2 hours for data

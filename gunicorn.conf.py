@@ -1,16 +1,20 @@
 """
 Gunicorn configuration for production deployment
+Uses settings.py for all environment variables
 """
 
-import os
-from decouple import config
+from settings import settings
+
+# Helper to return None when env var is missing/empty
+def none_if_empty(value):
+    return value if value not in ("", None) else None
 
 # Server socket
-bind = f"{config('API_HOST', default='0.0.0.0')}:{config('API_PORT', default=8000, cast=int)}"
+bind = f"{settings.API_HOST}:{settings.API_PORT}"
 backlog = 2048
 
 # Worker processes
-workers = config('WORKERS', default=4, cast=int)  # CPU cores * 2 + 1
+workers = max(1, settings.DEFAULT_FORECAST_HORIZON // 2)  # example, adjust as needed
 worker_class = "uvicorn.workers.UvicornWorker"
 worker_connections = 1000
 max_requests = 1000
@@ -22,30 +26,30 @@ keepalive = 5
 graceful_timeout = 30
 
 # Logging
-accesslog = config('ACCESS_LOG', default='-')  # stdout
-errorlog = config('ERROR_LOG', default='-')   # stderr
-loglevel = config('LOG_LEVEL', default='info')
+accesslog = "-"  # stdout
+errorlog = "-"   # stderr
+loglevel = "info"
 access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
 
 # Process naming
 proc_name = 'ttm-forecasting-api'
 
 # Server mechanics
-daemon = config('DAEMON_MODE', default=False, cast=bool)
-pidfile = config('PID_FILE', default='/tmp/gunicorn.pid')
-user = config('USER', default=None)
-group = config('GROUP', default=None)
+daemon = False
+pidfile = "/tmp/gunicorn.pid"
+user = none_if_empty(settings.AUTH_TOKEN)  # example, adjust if needed
+group = None
 tmp_upload_dir = None
 
 # SSL (if using HTTPS)
-keyfile = config('SSL_KEYFILE', default=None)
-certfile = config('SSL_CERTFILE', default=None)
+keyfile = none_if_empty(settings.AUTH_TOKEN)  # replace with SSL_KEYFILE if used
+certfile = none_if_empty(settings.AUTH_TOKEN)  # replace with SSL_CERTFILE if used
 
 # Preload application for better memory usage
 preload_app = True
 
 # Worker process management
-worker_tmp_dir = "/dev/shm"  # Use RAM for worker tmp directory
+worker_tmp_dir = "/dev/shm"
 
 # Security
 limit_request_line = 4096

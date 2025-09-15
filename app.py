@@ -12,43 +12,13 @@ from decouple import config as env_config
 
 from forecaster import DailyCPUForecaster
 from utils.data_loader import DataLoader
+from utils.error_handlers import get_error_handlers
 import psutil
 import time
+from settings import settings
 
 # Track application start time for uptime calculation
 app_start_time = time.time()
-
-
-# Configuration
-class Config:
-    """Configuration for the API"""
-
-    def __init__(self):
-        # Configurable base URL for data fetching
-        self.data_base_url = env_config('DATA_BASE_URL', default='http://localhost:8080')
-        self.default_timeout = env_config('REQUEST_TIMEOUT', default=30, cast=int)
-        self.auth_token = env_config('AUTH_TOKEN', default=None)
-
-        # API Server configuration
-        self.api_host = env_config('API_HOST', default='0.0.0.0')
-        self.api_port = env_config('API_PORT', default=8000, cast=int)
-        self.api_debug = env_config('API_DEBUG', default=False, cast=bool)
-
-        # Forecasting defaults
-        self.default_forecast_horizon = env_config('DEFAULT_FORECAST_HORIZON', default=30, cast=int)
-        self.default_use_enhanced_ttm = env_config('DEFAULT_USE_ENHANCED_TTM', default=False, cast=bool)
-
-        # Plotting configuration
-        self.save_plots = env_config('SAVE_PLOTS', default=False, cast=bool)
-        self.show_plots = env_config('SHOW_PLOTS', default=False, cast=bool)
-
-    def get_data_url(self, instance_name: str, metric: str) -> str:
-        """Build the data URL based on instance and metric"""
-        return f"{self.data_base_url}/api/metrics?instance={instance_name}&metric={metric}"
-
-
-config = Config()
-
 
 # Pydantic models for request/response
 class ForecastRequest(BaseModel):
@@ -144,6 +114,11 @@ app = FastAPI(
     description="Time Series Forecasting API for CPU, Memory, and IO metrics",
     version="1.0.0"
 )
+
+# Register error handlers
+error_handlers = get_error_handlers()
+for exception_class, handler in error_handlers.items():
+    app.add_exception_handler(exception_class, handler)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -483,9 +458,9 @@ async def test_forecast_with_local_data(request: TestForecastRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    if config.api_debug:
+    if settings.api_debug:
         # Use import string for reload functionality
-        uvicorn.run("app:app", host=config.api_host, port=config.api_port, reload=True)
+        uvicorn.run("app:app", host=settings.API_HOST, port=settings.API_PORT, reload=True)
     else:
         # Use app object for production (no reload)
-        uvicorn.run(app, host=config.api_host, port=config.api_port, reload=False)
+        uvicorn.run(app, host=settings.API_HOST, port=settings.API_PORT, reload=False)

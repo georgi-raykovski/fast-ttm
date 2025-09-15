@@ -5,13 +5,16 @@ Main forecaster class that orchestrates all models
 import pandas as pd
 from datetime import timedelta
 from typing import Dict
+import asyncio
+import concurrent.futures
 from models import (SeasonalNaiveModel, TTMModel, NaiveBayesModel,
                      TTMFineTunedModel, TTMAugmentedModel, TTMEnsembleModel)
 from models.ensemble import EnsembleMethods
 from visualization import ForecastVisualizer
 from utils.logging_config import get_logger
+from utils.cache import get_cache, hash_dataframe
 from utils.exceptions import TTMLibraryError, ModelNotAvailableError, InsufficientDataError, DataValidationError
-from utils.constants import MIN_DATA_POINTS_FOR_RELIABLE_FORECAST
+from utils.constants import MIN_DATA_POINTS_FOR_RELIABLE_FORECAST, FORECAST_CACHE_MAX_AGE
 
 logger = get_logger(__name__)
 
@@ -98,32 +101,94 @@ class DailyCPUForecaster:
 
         logger.info(f"Loaded {len(self.models)} models: {list(self.models.keys())}")
 
-    def run_all_models(self):
-        """Run all individual models"""
+    def _run_single_model(self, name: str, model) -> tuple:
+        """Run a single model and return results"""
+        try:
+            # Check cache first
+            cache = get_cache()
+            cache.max_age = FORECAST_CACHE_MAX_AGE
+            data_hash = hash_dataframe(self.train)
+            cache_key = cache.cache_key_for_forecast(
+                name, data_hash, self.forecast_horizon, test_size=self.test_size
+            )
+
+            cached_result = cache.get(cache_key)
+            if cached_result is not None:
+                logger.info(f"Using cached results for {name}")
+                return name, cached_result
+
+            logger.info(f"Running {name} forecast...")
+            result = model.fit_and_forecast(
+                self.train, self.test, self.forecast_horizon
+            )
+
+            # Cache the result
+            cache.set(cache_key, result)
+            return name, result
+
+        except Exception as e:
+            logger.error(f"{name} failed: {e}")
+            return name, None
+
+    def run_all_models(self, use_async: bool = True):
+        """Run all individual models with optional async execution"""
         logger.info("Running all forecasting models...")
 
-        for name, model in self.models.items():
-            try:
-                logger.info(f"Running {name} forecast...")
-                result = model.fit_and_forecast(
-                    self.train, self.test, self.forecast_horizon
-                )
-                self.results[name] = result
+        if use_async and len(self.models) > 1:
+            # Run models concurrently
+            self._run_models_async()
+        else:
+            # Run models sequentially
+            self._run_models_sequential()
 
-            except Exception as e:
-                logger.error(f"{name} failed: {e}")
-                # Continue with other models
+        # Create ensemble forecasts with graceful degradation
+        successful_results = {k: v for k, v in self.results.items() if v is not None}
 
-        # Create ensemble forecasts
-        if len(self.results) >= 2:
+        if len(successful_results) >= 2:
             logger.info("Creating ensemble forecasts...")
-            ensemble_results = self.ensemble_methods.create_ensemble_forecasts(
-                self.results, self.test
-            )
-            self.results.update(ensemble_results)
+            try:
+                ensemble_results = self.ensemble_methods.create_ensemble_forecasts(
+                    successful_results, self.test
+                )
+                self.results.update(ensemble_results)
 
-            logger.info("Adding confidence intervals...")
-            self.ensemble_methods.add_confidence_intervals(self.results, ensemble_results)
+                logger.info("Adding confidence intervals...")
+                self.ensemble_methods.add_confidence_intervals(self.results, ensemble_results)
+            except Exception as e:
+                logger.error(f"Ensemble creation failed: {e}. Continuing with individual models only.")
+        elif len(successful_results) == 1:
+            logger.warning("Only one model succeeded. Ensemble forecasts unavailable.")
+        else:
+            logger.error("No models succeeded. Unable to generate forecasts.")
+
+        # Log final status
+        total_models = len(self.models)
+        successful_models = len(successful_results)
+        logger.info(f"Forecasting completed: {successful_models}/{total_models} models succeeded")
+
+    def _run_models_sequential(self):
+        """Run models one by one"""
+        for name, model in self.models.items():
+            model_name, result = self._run_single_model(name, model)
+            if result is not None:
+                self.results[model_name] = result
+
+    def _run_models_async(self):
+        """Run models concurrently using thread pool"""
+        logger.info("Running models concurrently for better performance...")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(self.models))) as executor:
+            # Submit all model runs
+            future_to_name = {
+                executor.submit(self._run_single_model, name, model): name
+                for name, model in self.models.items()
+            }
+
+            # Collect results as they complete
+            for future in concurrent.futures.as_completed(future_to_name):
+                model_name, result = future.result()
+                if result is not None:
+                    self.results[model_name] = result
 
     def get_summary(self) -> pd.DataFrame:
         """Get summary table of model performance"""
@@ -148,13 +213,15 @@ class DailyCPUForecaster:
 
     def get_best_model(self) -> str:
         """Get the name of the best performing model (including ensemble models)"""
-        if not self.results:
+        available_results = {k: v for k, v in self.results.items() if v is not None}
+
+        if not available_results:
             return None
 
         best_mae = float('inf')
         best_model = None
-        for name, res in self.results.items():
-            if res['metrics']['MAE'] < best_mae:
+        for name, res in available_results.items():
+            if res and 'metrics' in res and res['metrics']['MAE'] < best_mae:
                 best_mae = res['metrics']['MAE']
                 best_model = name
         return best_model
