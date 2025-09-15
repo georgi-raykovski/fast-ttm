@@ -21,3 +21,6 @@ gunicorn>=21.2.0
 
 # System monitoring
 psutil>=5.9.0
+
+# Performance optimization
+xxhash>=3.0.0

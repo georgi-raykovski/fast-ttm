@@ -4,6 +4,7 @@ Error handling utilities for TTM Forecasting API
 
 import time
 import traceback
+import uuid
 from typing import Dict, Any, Optional
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -160,22 +161,62 @@ class APIErrorHandler:
 
     @staticmethod
     def handle_unexpected_error(error: Exception, request: Request = None) -> JSONResponse:
-        """Handle unexpected errors"""
-        # Log full traceback for debugging
-        logger.error(f"Unexpected error: {error}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        """
+        Handle unexpected errors with environment-aware information disclosure.
+
+        In production, sensitive details are hidden to prevent information leakage.
+        In development, full details are shown for debugging.
+        """
+        # Generate unique error ID for tracking
+        error_id = str(uuid.uuid4())
+
+        # Always log full details internally for debugging
+        logger.error(f"Unexpected error [{error_id}]: {error}")
+        logger.error(f"Error class: {error.__class__.__name__}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+
+        # Check if we're in debug mode (you can also check environment variables)
+        try:
+            from settings import Settings
+            settings = Settings()
+            is_debug = settings.API_DEBUG
+        except:
+            # Fallback: assume production if settings unavailable
+            is_debug = False
+
+        # Prepare error details based on environment
+        if is_debug:
+            # Development: show detailed error information
+            error_details = {
+                "error_id": error_id,
+                "error_class": error.__class__.__name__,
+                "error_message": str(error),
+                "traceback": traceback.format_exc().split('\n')
+            }
+            message = f"Development Error: {str(error)}"
+            suggestions = [
+                "Check the traceback for debugging information",
+                "Verify input parameters and data format",
+                "Check logs for additional context"
+            ]
+        else:
+            # Production: hide sensitive details
+            error_details = {
+                "error_id": error_id,
+                "timestamp": time.time()
+            }
+            message = "An unexpected error occurred while processing your request"
+            suggestions = [
+                "Try your request again",
+                f"Contact support with error ID: {error_id}",
+                "Ensure all required parameters are provided correctly"
+            ]
 
         error_detail = ErrorDetail(
             error_type="INTERNAL_SERVER_ERROR",
-            message="An unexpected error occurred while processing your request",
-            details={
-                "error_class": error.__class__.__name__
-            },
-            suggestions=[
-                "Try your request again",
-                "Contact support if the error persists",
-                "Check that all required parameters are provided"
-            ]
+            message=message,
+            details=error_details,
+            suggestions=suggestions
         )
 
         return JSONResponse(

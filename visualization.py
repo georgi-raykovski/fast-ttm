@@ -7,14 +7,14 @@ import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import timedelta
-from typing import Dict
+from typing import Dict, Any, Optional, List
 import os
 
 
 class ForecastVisualizer:
     """Visualization utilities for forecasting results"""
 
-    def __init__(self, save_plots: bool = True, show_plots: bool = False, output_dir: str = './plots'):
+    def __init__(self, save_plots: bool = True, show_plots: bool = False, output_dir: str = './plots') -> None:
         # Set matplotlib backend to prevent GUI windows when not showing plots
         if not show_plots:
             current_backend = matplotlib.get_backend()
@@ -40,7 +40,7 @@ class ForecastVisualizer:
         if save_plots and not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-    def plot_results(self, data: pd.Series, results: Dict, forecast_horizon: int,
+    def plot_results(self, data: pd.Series, results: Dict[str, Any], forecast_horizon: int,
                     test_size: int) -> None:
         """Plot historical data and forecasting results with confidence intervals"""
 
@@ -163,7 +163,7 @@ class ForecastVisualizer:
             else:
                 plt.close(fig)
 
-    def plot_model_comparison(self, results: Dict) -> None:
+    def plot_model_comparison(self, results: Dict[str, Any]) -> None:
         """Create a bar chart comparing model performance"""
 
         models = []
@@ -212,7 +212,7 @@ class ForecastVisualizer:
         else:
             plt.close(fig)
 
-    def create_summary_table(self, results: Dict) -> pd.DataFrame:
+    def create_summary_table(self, results: Dict[str, Any]) -> pd.DataFrame:
         """Create a summary DataFrame of model performance"""
         summary = []
         for name, res in results.items():
@@ -226,7 +226,7 @@ class ForecastVisualizer:
         df = pd.DataFrame(summary).sort_values('MAE')
         return df
 
-    def create_interactive_plot(self, data: pd.Series, results: Dict, forecast_horizon: int,
+    def create_interactive_plot(self, data: pd.Series, results: Dict[str, Any], forecast_horizon: int,
                               test_size: int) -> None:
         """Create an interactive HTML plot using plotly (if available)"""
         try:

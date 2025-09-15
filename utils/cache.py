@@ -6,6 +6,7 @@ import hashlib
 import json
 import pickle
 import time
+import os
 from pathlib import Path
 from typing import Any, Optional, Dict, Union
 from functools import wraps
@@ -102,6 +103,97 @@ class SimpleCache:
         return self._get_cache_key("forecast", model_name, data_hash, horizon, **model_params)
 
 
+class SecureCache(SimpleCache):
+    """
+    Secure cache implementation with encryption for sensitive data.
+
+    Uses cryptography library to encrypt cached data and stores encryption keys
+    with proper file permissions.
+    """
+
+    def __init__(self, cache_dir: str = "./cache", max_age_seconds: int = 3600):
+        super().__init__(cache_dir, max_age_seconds)
+        self.cipher = self._get_or_create_cipher()
+
+    def _get_or_create_cipher(self):
+        """Get or create encryption cipher with secure key storage"""
+        try:
+            from cryptography.fernet import Fernet
+
+            key_file = self.cache_dir / '.cache_key'
+
+            if key_file.exists():
+                # Load existing key
+                with open(key_file, 'rb') as f:
+                    key = f.read()
+                logger.debug("Loaded existing cache encryption key")
+            else:
+                # Generate new key
+                key = Fernet.generate_key()
+                with open(key_file, 'wb') as f:
+                    f.write(key)
+                # Set secure permissions (owner read/write only)
+                os.chmod(key_file, 0o600)
+                logger.info("Generated new cache encryption key")
+
+            return Fernet(key)
+
+        except ImportError:
+            logger.warning("cryptography library not available, falling back to unencrypted cache")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to initialize cache encryption: {e}")
+            return None
+
+    def set(self, cache_key: str, value: Any) -> bool:
+        """Set encrypted value in cache"""
+        try:
+            cache_path = self._get_cache_path(cache_key)
+
+            # Serialize data
+            data = pickle.dumps(value)
+
+            # Encrypt if cipher available
+            if self.cipher:
+                data = self.cipher.encrypt(data)
+
+            with open(cache_path, 'wb') as f:
+                f.write(data)
+
+            # Set secure file permissions
+            os.chmod(cache_path, 0o600)
+
+            logger.debug(f"Secure cache set for key: {cache_key}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Secure cache write failed for key {cache_key}: {e}")
+            return False
+
+    def get(self, cache_key: str) -> Optional[Any]:
+        """Get decrypted value from cache"""
+        try:
+            cache_path = self._get_cache_path(cache_key)
+
+            if self._is_expired(cache_path):
+                return None
+
+            with open(cache_path, 'rb') as f:
+                data = f.read()
+
+            # Decrypt if cipher available
+            if self.cipher:
+                data = self.cipher.decrypt(data)
+
+            cached_data = pickle.loads(data)
+            logger.debug(f"Secure cache hit for key: {cache_key}")
+            return cached_data
+
+        except Exception as e:
+            logger.warning(f"Secure cache read failed for key {cache_key}: {e}")
+            return None
+
+
 # Global cache instance
 _cache_instance = None
 
@@ -150,6 +242,32 @@ def hash_dataframe(df: Union[pd.DataFrame, pd.Series]) -> str:
         return hashlib.md5(str(df.values).encode()).hexdigest()
 
 
+def hash_dataframe_fast(df: Union[pd.DataFrame, pd.Series]) -> str:
+    """
+    Fast hashing using xxhash for large datasets with fallback to standard method.
+
+    Performance improvement: xxhash is 3-5x faster than md5/sha1 for large data.
+    """
+    try:
+        # Try to use xxhash for better performance
+        try:
+            import xxhash
+            hasher = xxhash.xxh64()
+
+            # Hash index and values separately for better performance
+            if hasattr(df, 'index'):
+                hasher.update(df.index.values.tobytes())
+            hasher.update(df.values.tobytes())
+
+            return hasher.hexdigest()
+        except ImportError:
+            # xxhash not available, use optimized pandas hashing
+            return hash_dataframe(df)
+    except Exception:
+        # Final fallback to original method
+        return hash_dataframe(df)
+
+
 def optimize_array_memory(arr, dtype=None):
     """Optimize array memory usage by downcasting"""
     import numpy as np
@@ -191,3 +309,40 @@ def optimize_array_memory(arr, dtype=None):
             return arr.astype(np.float32)
 
     return arr  # Return original if no optimization possible
+
+
+def optimize_dataframe_memory(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Fast memory optimization using pandas built-ins and categorical data.
+
+    Performance improvements:
+    - Use pandas categorical for string columns with low cardinality
+    - Automatic numeric downcasting
+    - Memory-efficient data types
+
+    Returns optimized copy of DataFrame.
+    """
+    if not isinstance(df, pd.DataFrame):
+        return df
+
+    df_optimized = df.copy()
+
+    # Convert object columns to categorical if beneficial
+    for col in df_optimized.select_dtypes(include=['object']):
+        # Use categorical if less than 50% unique values
+        if df_optimized[col].nunique() / len(df_optimized) < 0.5:
+            df_optimized[col] = df_optimized[col].astype('category')
+
+    # Downcast numeric types automatically
+    for col in df_optimized.select_dtypes(include=[np.number]):
+        col_type = df_optimized[col].dtype
+
+        # Downcast integers
+        if 'int' in str(col_type):
+            df_optimized[col] = pd.to_numeric(df_optimized[col], downcast='integer')
+
+        # Downcast floats
+        elif 'float' in str(col_type):
+            df_optimized[col] = pd.to_numeric(df_optimized[col], downcast='float')
+
+    return df_optimized

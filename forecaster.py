@@ -4,7 +4,7 @@ Main forecaster class that orchestrates all models
 
 import pandas as pd
 from datetime import timedelta
-from typing import Dict
+from typing import Dict, Any, Tuple, Optional
 import asyncio
 import concurrent.futures
 from models import (SeasonalNaiveModel, TTMModel, NaiveBayesModel,
@@ -12,7 +12,7 @@ from models import (SeasonalNaiveModel, TTMModel, NaiveBayesModel,
 from models.ensemble import EnsembleMethods
 from visualization import ForecastVisualizer
 from utils.logging_config import get_logger
-from utils.cache import get_cache, hash_dataframe
+from utils.cache import get_cache, hash_dataframe, hash_dataframe_fast
 from utils.exceptions import TTMLibraryError, ModelNotAvailableError, InsufficientDataError, DataValidationError
 from utils.constants import MIN_DATA_POINTS_FOR_RELIABLE_FORECAST, FORECAST_CACHE_MAX_AGE
 
@@ -101,13 +101,13 @@ class DailyCPUForecaster:
 
         logger.info(f"Loaded {len(self.models)} models: {list(self.models.keys())}")
 
-    def _run_single_model(self, name: str, model) -> tuple:
+    def _run_single_model(self, name: str, model: Any) -> Tuple[str, Dict[str, Any]]:
         """Run a single model and return results"""
         try:
             # Check cache first
             cache = get_cache()
             cache.max_age = FORECAST_CACHE_MAX_AGE
-            data_hash = hash_dataframe(self.train)
+            data_hash = hash_dataframe_fast(self.train)
             cache_key = cache.cache_key_for_forecast(
                 name, data_hash, self.forecast_horizon, test_size=self.test_size
             )
@@ -130,7 +130,7 @@ class DailyCPUForecaster:
             logger.error(f"{name} failed: {e}")
             return name, None
 
-    def run_all_models(self, use_async: bool = True):
+    def run_all_models(self, use_async: bool = True) -> None:
         """Run all individual models with optional async execution"""
         logger.info("Running all forecasting models...")
 
@@ -166,14 +166,14 @@ class DailyCPUForecaster:
         successful_models = len(successful_results)
         logger.info(f"Forecasting completed: {successful_models}/{total_models} models succeeded")
 
-    def _run_models_sequential(self):
+    def _run_models_sequential(self) -> None:
         """Run models one by one"""
         for name, model in self.models.items():
             model_name, result = self._run_single_model(name, model)
             if result is not None:
                 self.results[model_name] = result
 
-    def _run_models_async(self):
+    def _run_models_async(self) -> None:
         """Run models concurrently using thread pool"""
         logger.info("Running models concurrently for better performance...")
 

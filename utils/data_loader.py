@@ -99,7 +99,13 @@ class DataLoader:
             if isinstance(raw, list):
                 data_list = raw
             elif isinstance(raw, dict):
-                if 'data' in raw:
+                if 'metrics' in raw and isinstance(raw['metrics'], list):
+                    data_list = [
+                        {'date': item['date'], 'value': float(item['percentage'])}
+                        for item in raw['metrics']
+                        if 'date' in item and 'percentage' in item
+                    ]
+                elif 'data' in raw:
                     data_list = raw['data']
                 elif 'dates' in raw and 'values' in raw:
                     # Convert separate arrays to list of objects
