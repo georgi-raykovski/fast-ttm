@@ -5,7 +5,6 @@ FastAPI application for TTM Forecasting System
 import os
 from typing import List, Union, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel, Field
 import pandas as pd
 from datetime import datetime
 
@@ -16,99 +15,17 @@ from utils.forecast_helpers import (
     create_error_forecast_response, create_successful_forecast_response,
     validate_metrics_list, extract_request_config, ForecastErrorHandler
 )
+from schemas import (
+    ForecastRequest, TestForecastRequest, ForecastResponse, TestForecastResponse,
+    HealthResponse, AvailableModelsResponse, MetricsResponse, MetricForecast,
+    ModelPerformance, PredictionPoint
+)
 import psutil
 import time
 from settings import settings
 
 # Track application start time for uptime calculation
 app_start_time = time.time()
-
-# Pydantic models for request/response
-class ForecastRequest(BaseModel):
-    """Request model for forecasting"""
-    instance_name: str = Field(..., description="Name of the instance to forecast")
-    metric: Union[str, List[str]] = Field(..., description="Metric(s) to forecast: cpu, memory, or io")
-    forecast_horizon: Optional[int] = Field(default=None, ge=1, le=365, description="Number of days to forecast")
-    use_enhanced_ttm: Optional[bool] = Field(default=None, description="Whether to use enhanced TTM models")
-    timeout: Optional[int] = Field(default=None, ge=1, le=300, description="Request timeout in seconds")
-
-
-class TestForecastRequest(BaseModel):
-    """Request model for test forecasting with local data"""
-    data_file: str = Field(default="data.json", description="Local data file to use (data.json or data-long.json)")
-    forecast_horizon: Optional[int] = Field(default=None, ge=1, le=365, description="Number of days to forecast")
-    use_enhanced_ttm: Optional[bool] = Field(default=None, description="Whether to use enhanced TTM models")
-
-
-class ModelPerformance(BaseModel):
-    """Model performance metrics"""
-    mae: float
-    rmse: float
-    mape: float
-
-
-class PredictionPoint(BaseModel):
-    """Single prediction point"""
-    date: str
-    value: float
-    lower_ci: Optional[float] = None
-    upper_ci: Optional[float] = None
-
-
-class MetricForecast(BaseModel):
-    """Individual metric forecast result"""
-    metric: str
-    predictions: List[PredictionPoint]
-    model_name: str
-    model_performance: ModelPerformance
-    has_confidence_intervals: bool
-    total_models_compared: int
-    forecast_horizon: int
-    error: Optional[str] = None
-
-
-class ForecastResponse(BaseModel):
-    """Response model for forecasting - consistent array structure"""
-    instance_name: str
-    forecasts: List[MetricForecast]
-    total_forecasts: int
-    generated_at: str
-
-
-class TestForecastResponse(BaseModel):
-    """Response model for test forecasting - consistent array structure"""
-    data_file: str
-    data_points: int
-    forecasts: List[MetricForecast]
-    total_forecasts: int
-    generated_at: str
-
-
-class HealthResponse(BaseModel):
-    """Health check response"""
-    status: str
-    version: str
-    timestamp: str
-    uptime_seconds: Optional[float] = None
-    memory_usage_mb: Optional[float] = None
-    available_models: Optional[List[str]] = None
-
-
-class AvailableModelsResponse(BaseModel):
-    """Available models response"""
-    models: List[str]
-    enhanced_models: List[str]
-
-
-class MetricsResponse(BaseModel):
-    """System metrics response"""
-    cpu_percent: float
-    memory_percent: float
-    memory_used_mb: float
-    memory_available_mb: float
-    disk_usage_percent: float
-    uptime_seconds: float
-    request_count: Optional[int] = None
 
 
 # FastAPI app
@@ -362,97 +279,96 @@ async def forecast_batch_metrics(requests: List[ForecastRequest]):
     return {"results": results}
 
 
-@app.post("/forecast/test", response_model=TestForecastResponse)
-async def test_forecast_with_local_data(request: TestForecastRequest):
-    """
-    Test forecasting endpoint using local data files
+# @app.post("/forecast/test", response_model=TestForecastResponse)
+# async def test_forecast_with_local_data(request: TestForecastRequest):
+#     """
+#     Test forecasting endpoint using local data files
 
-    Uses existing data.json or data-long.json files for testing without external dependencies
-    """
-    try:
-        # Use provided values or defaults from config
-        forecast_horizon = request.forecast_horizon or settings.DEFAULT_FORECAST_HORIZON
-        use_enhanced_ttm = request.use_enhanced_ttm if request.use_enhanced_ttm is not None else settings.DEFAULT_USE_ENHANCED_TTM
+#     Uses existing data.json or data-long.json files for testing without external dependencies
+#     """
+#     try:
+#         # Use provided values or defaults from config
+#         forecast_horizon = request.forecast_horizon or settings.DEFAULT_FORECAST_HORIZON
+#         use_enhanced_ttm = request.use_enhanced_ttm if request.use_enhanced_ttm is not None else settings.DEFAULT_USE_ENHANCED_TTM
 
-        # Validate data file choice
-        if request.data_file not in ["data.json", "data-long.json"]:
-            raise HTTPException(status_code=400, detail="data_file must be 'data.json' or 'data-long.json'")
+#         # Validate data file choice
+#         if request.data_file not in ["data.json", "data-long.json"]:
+#             raise HTTPException(status_code=400, detail="data_file must be 'data.json' or 'data-long.json'")
 
-        # Load data from local file
-        try:
-            series = DataLoader.load_data(f"./{request.data_file}")
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to load local data from {request.data_file}: {str(e)}")
+#         # Load data from local file
+#         try:
+#             series = DataLoader.load_data(f"./{request.data_file}")
+#         except Exception as e:
+#             raise HTTPException(status_code=400, detail=f"Failed to load local data from {request.data_file}: {str(e)}")
 
-        # Initialize forecaster
-        forecaster = DailyCPUForecaster(
-            series,
-            forecast_horizon=forecast_horizon,
-            use_enhanced_ttm=use_enhanced_ttm
-        )
+#         # Initialize forecaster
+#         forecaster = DailyCPUForecaster(
+#             series,
+#             forecast_horizon=forecast_horizon,
+#             use_enhanced_ttm=use_enhanced_ttm
+#         )
 
-        # Configure plotting for API usage
-        forecaster.configure_plotting(save_plots=settings.SAVE_PLOTS, show_plots=settings.SHOW_PLOTS)
+#         # Configure plotting for API usage
+#         forecaster.configure_plotting(save_plots=settings.SAVE_PLOTS, show_plots=settings.SHOW_PLOTS)
 
-        # Run forecasting
-        forecaster.run_all_models()
+#         # Run forecasting
+#         forecaster.run_all_models()
 
-        # Generate plots
-        forecaster.plot_results()
-        forecaster.plot_model_comparison()
-        forecaster.create_interactive_plot()
+#         # Generate plots
+#         forecaster.plot_results()
+#         forecaster.plot_model_comparison()
+#         forecaster.create_interactive_plot()
 
-        # Get best model predictions
-        predictions_result = forecaster.get_best_model_predictions()
+#         # Get best model predictions
+#         predictions_result = forecaster.get_best_model_predictions()
 
-        if 'error' in predictions_result:
-            raise HTTPException(status_code=500, detail=f"Forecasting failed: {predictions_result['error']}")
+#         if 'error' in predictions_result:
+#             raise HTTPException(status_code=500, detail=f"Forecasting failed: {predictions_result['error']}")
 
-        # Format response
-        metadata = predictions_result.get('metadata', {})
-        predictions = []
+#         # Format response
+#         metadata = predictions_result.get('metadata', {})
+#         predictions = []
 
-        for pred in predictions_result['predictions']:
-            # Parse prediction format - assuming it's a string like "2024-01-01: 45.2 [40.1, 50.3]"
-            # You may need to adjust this based on actual format
-            prediction_point = PredictionPoint(
-                date=pred.get('date', ''),
-                value=pred.get('value', 0.0),
-                lower_ci=pred.get('lower_bound'),
-                upper_ci=pred.get('upper_bound')
-            )
-            predictions.append(prediction_point)
+#         for pred in predictions_result['predictions']:
+#             # Parse prediction format - assuming it's a string like "2024-01-01: 45.2 [40.1, 50.3]"
+#             # You may need to adjust this based on actual format
+#             prediction_point = PredictionPoint(
+#                 date=pred.get('date', ''),
+#                 value=pred.get('value', 0.0),
+#                 lower_ci=pred.get('lower_bound'),
+#                 upper_ci=pred.get('upper_bound')
+#             )
+#             predictions.append(prediction_point)
 
-        model_perf = metadata.get('model_performance', {})
+#         model_perf = metadata.get('model_performance', {})
 
-        # Create test metric forecast (using 'test' as metric name)
-        metric_forecast = MetricForecast(
-            metric="test",
-            predictions=predictions,
-            model_name=metadata.get('model_name', 'Unknown'),
-            model_performance=ModelPerformance(
-                mae=model_perf.get('mae', 0.0),
-                rmse=model_perf.get('rmse', 0.0),
-                mape=model_perf.get('mape', 0.0)
-            ),
-            has_confidence_intervals=metadata.get('has_confidence_intervals', False),
-            total_models_compared=metadata.get('total_models_compared', 0),
-            forecast_horizon=forecast_horizon
-        )
+#         # Create test metric forecast (using 'test' as metric name)
+#         metric_forecast = MetricForecast(
+#             metric="test",
+#             predictions=predictions,
+#             model_name=metadata.get('model_name', 'Unknown'),
+#             model_performance=ModelPerformance(
+#                 mae=model_perf.get('mae', 0.0),
+#                 rmse=model_perf.get('rmse', 0.0),
+#                 mape=model_perf.get('mape', 0.0)
+#             ),
+#             has_confidence_intervals=metadata.get('has_confidence_intervals', False),
+#             total_models_compared=metadata.get('total_models_compared', 0),
+#             forecast_horizon=forecast_horizon
+#         )
 
-        return TestForecastResponse(
-            data_file=request.data_file,
-            data_points=len(series),
-            forecasts=[metric_forecast],
-            total_forecasts=1,
-            generated_at=datetime.now().isoformat()
-        )
+#         return TestForecastResponse(
+#             data_file=request.data_file,
+#             data_points=len(series),
+#             forecasts=[metric_forecast],
+#             total_forecasts=1,
+#             generated_at=datetime.now().isoformat()
+#         )
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

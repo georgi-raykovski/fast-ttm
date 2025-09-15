@@ -25,7 +25,7 @@ def create_error_forecast_response(metric: str, forecast_horizon: int, error_mes
         MetricForecast with error information
     """
     # Import here to avoid circular imports
-    from app import MetricForecast, ModelPerformance
+    from schemas import MetricForecast, ModelPerformance
 
     return MetricForecast(
         metric=metric,
@@ -55,7 +55,7 @@ def create_successful_forecast_response(metric: str, predictions_result: Dict[st
         MetricForecast with successful predictions
     """
     # Import here to avoid circular imports
-    from app import MetricForecast, ModelPerformance, PredictionPoint
+    from schemas import MetricForecast, ModelPerformance, PredictionPoint
 
     metadata = predictions_result.get('metadata', {})
     predictions = []
