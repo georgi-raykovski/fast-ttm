@@ -28,3 +28,11 @@ env/
 # Testing and coverage
 .coverage
 .coverage.*
+
+# Generated output files
+plots/
+*.png
+*.html
+ttm_forecasts.png
+ttm_forecast_results.json
+ttm_finetuned/

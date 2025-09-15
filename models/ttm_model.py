@@ -26,7 +26,7 @@ class TTMModel(BaseModel):
         self.train_data = None
 
         if not TTM_AVAILABLE:
-            raise ImportError("TTM library (tsfm_public) not available")
+            raise ImportError("TTM library (tsfm_public) not available. Install with: pip install git+https://github.com/IBM/tsfm.git")
 
     def fit(self, data: pd.Series) -> None:
         """Fit the model by loading pre-trained TTM and preparing data"""

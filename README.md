@@ -157,4 +157,28 @@ The system provides:
 - Performance metrics (MAE, RMSE, MAPE) for all models
 - Visual plots with confidence intervals
 - Model comparison charts
+- Interactive HTML plots with zoom/pan capabilities
+- Automatic plot saving to `./plots/` directory
 - Best model recommendations
+
+## Visualization Features
+
+### Static Plots (Matplotlib)
+- **Individual model plots**: Each model gets its own clear subplot
+- **Ensemble plots**: With confidence intervals
+- **Overview comparison**: All models on one chart
+- **Performance bar charts**: MAE, RMSE, MAPE comparison
+
+### Interactive Plots (Plotly)
+- **Zoom and pan**: Full interactivity with mouse controls
+- **HTML output**: Saved as `./plots/interactive_forecast.html`
+- **Auto-opens in browser**: No scrolling limitations
+- **Hover tooltips**: Detailed information on data points
+
+### Plot Files
+All plots are automatically saved to `./plots/`:
+- `individual_models.png`
+- `ensemble_models.png`
+- `overview_comparison.png`
+- `model_comparison.png`
+- `interactive_forecast.html` (interactive)

@@ -4,7 +4,8 @@ Main forecaster class that orchestrates all models
 
 import pandas as pd
 from typing import Dict
-from models import SeasonalNaiveModel, TTMModel, NaiveBayesModel
+from models import (SeasonalNaiveModel, TTMModel, NaiveBayesModel,
+                     TTMFineTunedModel, TTMAugmentedModel, TTMEnsembleModel)
 from ensemble import EnsembleMethods
 from visualization import ForecastVisualizer
 
@@ -12,7 +13,8 @@ from visualization import ForecastVisualizer
 class DailyCPUForecaster:
     """Main forecaster class that coordinates all models and ensemble methods"""
 
-    def __init__(self, data: pd.Series, forecast_horizon: int = 30, test_size: int = 14):
+    def __init__(self, data: pd.Series, forecast_horizon: int = 30, test_size: int = 14,
+                 use_enhanced_ttm: bool = False):
         self.data = data
         self.forecast_horizon = forecast_horizon
         self.test_size = test_size
@@ -26,12 +28,54 @@ class DailyCPUForecaster:
         self.ensemble_methods = EnsembleMethods()
         self.visualizer = ForecastVisualizer()
 
-        # Initialize models
+        # Initialize models with TTM error handling
         self.models = {
             'SeasonalNaive': SeasonalNaiveModel(),
-            'TTM_ZeroShot': TTMModel(),
             'NaiveBayes': NaiveBayesModel()
         }
+
+        # Try to add TTM models with graceful fallback
+        try:
+            if use_enhanced_ttm:
+                print("Attempting to load enhanced TTM models...")
+
+                # Try basic TTM first
+                try:
+                    self.models['TTM_ZeroShot'] = TTMModel()
+                except ImportError as e:
+                    print(f"Basic TTM model unavailable: {e}")
+
+                # Try enhanced TTM models
+                try:
+                    self.models['TTM_Ensemble'] = TTMEnsembleModel()
+                except ImportError as e:
+                    print(f"TTM Ensemble model unavailable: {e}")
+
+                try:
+                    self.models['TTM_Augmented'] = TTMAugmentedModel()
+                except ImportError as e:
+                    print(f"TTM Augmented model unavailable: {e}")
+
+                # Add fine-tuning model if we have sufficient data
+                if len(self.train) >= 30:
+                    try:
+                        self.models['TTM_FineTuned'] = TTMFineTunedModel()
+                    except ImportError as e:
+                        print(f"TTM Fine-tuned model unavailable: {e}")
+
+            else:
+                # Try to add basic TTM model
+                try:
+                    self.models['TTM_ZeroShot'] = TTMModel()
+                except ImportError as e:
+                    print(f"TTM library not available: {e}")
+                    print("Continuing with non-TTM models only")
+
+        except Exception as e:
+            print(f"Error loading TTM models: {e}")
+            print("Continuing with SeasonalNaive and NaiveBayes only")
+
+        print(f"Loaded {len(self.models)} models: {list(self.models.keys())}")
 
     def run_all_models(self):
         """Run all individual models"""
@@ -65,14 +109,26 @@ class DailyCPUForecaster:
         return self.visualizer.create_summary_table(self.results)
 
     def plot_results(self):
-        """Plot forecasting results"""
+        """Plot individual model forecasts (separate plots)"""
         self.visualizer.plot_results(
             self.data, self.results, self.forecast_horizon, self.test_size
         )
 
+    def plot_overview(self):
+        """Plot overview with all models for comparison"""
+        self.visualizer.plot_overview(
+            self.data, self.results, self.forecast_horizon, self.test_size
+        )
+
     def plot_model_comparison(self):
-        """Plot model performance comparison"""
+        """Plot model performance comparison bar charts"""
         self.visualizer.plot_model_comparison(self.results)
+
+    def create_interactive_plot(self):
+        """Create interactive HTML plot with zoom and pan"""
+        self.visualizer.create_interactive_plot(
+            self.data, self.results, self.forecast_horizon, self.test_size
+        )
 
     def get_best_model(self) -> str:
         """Get the name of the best performing model"""

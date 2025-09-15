@@ -8,15 +8,26 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import timedelta
 from typing import Dict
+import os
 
 
 class ForecastVisualizer:
     """Visualization utilities for forecasting results"""
 
-    def __init__(self):
+    def __init__(self, save_plots: bool = True, output_dir: str = './plots'):
         # Set style
         plt.style.use('seaborn-v0_8-darkgrid')
         sns.set_palette("husl")
+
+        # Configure matplotlib for interactivity
+        plt.rcParams['figure.figsize'] = [16, 8]
+        plt.rcParams['font.size'] = 10
+
+        # Setup output directory
+        self.save_plots = save_plots
+        self.output_dir = output_dir
+        if save_plots and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
 
     def get_best_model(self, results: Dict) -> str:
         """Return the name of the best performing individual model"""
@@ -33,47 +44,154 @@ class ForecastVisualizer:
                     test_size: int) -> None:
         """Plot historical data and forecasting results with confidence intervals"""
 
-        plt.figure(figsize=(16, 8))
-
-        # Plot historical data
-        plt.plot(data.index, data.values, label='Historical CPU', color='blue', linewidth=2)
-
-        # Create future dates
+        # Create future dates and test dates
         future_dates = pd.date_range(
             data.index[-1] + timedelta(days=1),
             periods=forecast_horizon
         )
-
-        # Create test dates
         test_dates = data.index[-test_size:]
 
-        # Get best individual model name
-        best_model = self.get_best_model(results)
+        # Separate individual models and ensemble models
+        individual_models = {k: v for k, v in results.items() if 'Ensemble' not in k}
+        ensemble_models = {k: v for k, v in results.items() if 'Ensemble' in k}
 
-        for name, res in results.items():
-            # Only plot ensemble models and best individual model to avoid clutter
-            if 'Ensemble' in name or name == best_model:
+        # Plot 1: Individual Models (separate subplots)
+        if individual_models:
+            n_models = len(individual_models)
+            fig, axes = plt.subplots(n_models, 1, figsize=(16, 4 * n_models))
+            if n_models == 1:
+                axes = [axes]
+
+            for i, (name, res) in enumerate(individual_models.items()):
+                ax = axes[i]
+
+                # Plot historical data
+                ax.plot(data.index, data.values, label='Historical CPU',
+                       color='blue', linewidth=2)
+
                 # Plot test forecasts
-                plt.plot(test_dates, res['test_forecast'],
-                        label=f'{name} Test', linestyle='--', linewidth=1.5)
+                ax.plot(test_dates, res['test_forecast'],
+                       label='Test Forecast', color='red', linestyle='--', linewidth=2)
 
                 # Plot future forecasts
-                plt.plot(future_dates, res['future_forecast'],
-                        label=f'{name} Future', linestyle=':', linewidth=1.5)
+                ax.plot(future_dates, res['future_forecast'],
+                       label='Future Forecast', color='green', linestyle=':', linewidth=2)
 
-                # Add confidence intervals for ensemble models
+                ax.set_title(f"{name} Model Forecast", fontsize=14)
+                ax.set_xlabel("Date", fontsize=12)
+                ax.set_ylabel("CPU Usage (%)", fontsize=12)
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+
+            plt.suptitle("Individual Model Forecasts", fontsize=16)
+            plt.tight_layout()
+
+            # Enable interactive navigation
+            if hasattr(plt.get_current_fig_manager(), 'toolbar'):
+                plt.get_current_fig_manager().toolbar.pan()
+
+            # Save plot
+            if self.save_plots:
+                plt.savefig(f'{self.output_dir}/individual_models.png', dpi=300, bbox_inches='tight')
+                print(f"Individual models plot saved to {self.output_dir}/individual_models.png")
+
+            plt.show()
+
+        # Plot 2: Ensemble Models with Confidence Intervals
+        if ensemble_models:
+            fig, axes = plt.subplots(len(ensemble_models), 1, figsize=(16, 5 * len(ensemble_models)))
+            if len(ensemble_models) == 1:
+                axes = [axes]
+
+            for i, (name, res) in enumerate(ensemble_models.items()):
+                ax = axes[i]
+
+                # Plot historical data
+                ax.plot(data.index, data.values, label='Historical CPU',
+                       color='blue', linewidth=2)
+
+                # Plot test forecasts
+                ax.plot(test_dates, res['test_forecast'],
+                       label='Test Forecast', color='red', linestyle='--', linewidth=2)
+
+                # Plot future forecasts
+                ax.plot(future_dates, res['future_forecast'],
+                       label='Future Forecast', color='green', linestyle=':', linewidth=2)
+
+                # Add confidence intervals if available
                 if 'test_upper' in res:
-                    plt.fill_between(test_dates, res['test_lower'], res['test_upper'],
-                                   alpha=0.2, label=f'{name} 95% CI')
-                    plt.fill_between(future_dates, res['future_lower'], res['future_upper'],
-                                   alpha=0.2)
+                    ax.fill_between(test_dates, res['test_lower'], res['test_upper'],
+                                   alpha=0.3, color='red', label='Test 95% CI')
+                    ax.fill_between(future_dates, res['future_lower'], res['future_upper'],
+                                   alpha=0.3, color='green', label='Future 95% CI')
 
-        plt.title("Daily CPU Forecasts with Confidence Intervals", fontsize=14)
+                ax.set_title(f"{name} Forecast with Confidence Intervals", fontsize=14)
+                ax.set_xlabel("Date", fontsize=12)
+                ax.set_ylabel("CPU Usage (%)", fontsize=12)
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+
+            plt.suptitle("Ensemble Model Forecasts", fontsize=16)
+            plt.tight_layout()
+
+            # Enable interactive navigation
+            if hasattr(plt.get_current_fig_manager(), 'toolbar'):
+                plt.get_current_fig_manager().toolbar.pan()
+
+            # Save plot
+            if self.save_plots:
+                plt.savefig(f'{self.output_dir}/ensemble_models.png', dpi=300, bbox_inches='tight')
+                print(f"Ensemble models plot saved to {self.output_dir}/ensemble_models.png")
+
+            plt.show()
+
+    def plot_overview(self, data: pd.Series, results: Dict, forecast_horizon: int,
+                     test_size: int) -> None:
+        """Plot overview with all models for comparison"""
+
+        plt.figure(figsize=(16, 8))
+
+        # Plot historical data
+        plt.plot(data.index, data.values, label='Historical CPU', color='blue', linewidth=3)
+
+        # Create future dates and test dates
+        future_dates = pd.date_range(
+            data.index[-1] + timedelta(days=1),
+            periods=forecast_horizon
+        )
+        test_dates = data.index[-test_size:]
+
+        # Colors for different models
+        colors = ['red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive']
+        color_idx = 0
+
+        # Plot all models
+        for name, res in results.items():
+            color = colors[color_idx % len(colors)]
+            color_idx += 1
+
+            # Plot with different line styles for test vs future
+            plt.plot(test_dates, res['test_forecast'],
+                    color=color, linestyle='--', linewidth=2, alpha=0.8)
+            plt.plot(future_dates, res['future_forecast'],
+                    label=f'{name}', color=color, linestyle=':', linewidth=2)
+
+        plt.title("All Models Comparison Overview", fontsize=16)
         plt.xlabel("Date", fontsize=12)
         plt.ylabel("CPU Usage (%)", fontsize=12)
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
+
+        # Enable interactive navigation
+        if hasattr(plt.get_current_fig_manager(), 'toolbar'):
+            plt.get_current_fig_manager().toolbar.pan()
+
+        # Save plot
+        if self.save_plots:
+            plt.savefig(f'{self.output_dir}/overview_comparison.png', dpi=300, bbox_inches='tight')
+            print(f"Overview plot saved to {self.output_dir}/overview_comparison.png")
+
         plt.show()
 
     def plot_model_comparison(self, results: Dict) -> None:
@@ -114,6 +232,12 @@ class ForecastVisualizer:
         ax3.set_xticklabels(models, rotation=45, ha='right')
 
         plt.tight_layout()
+
+        # Save plot
+        if self.save_plots:
+            plt.savefig(f'{self.output_dir}/model_comparison.png', dpi=300, bbox_inches='tight')
+            print(f"Model comparison plot saved to {self.output_dir}/model_comparison.png")
+
         plt.show()
 
     def create_summary_table(self, results: Dict) -> pd.DataFrame:
@@ -129,3 +253,101 @@ class ForecastVisualizer:
 
         df = pd.DataFrame(summary).sort_values('MAE')
         return df
+
+    def create_interactive_plot(self, data: pd.Series, results: Dict, forecast_horizon: int,
+                              test_size: int) -> None:
+        """Create an interactive HTML plot using plotly (if available)"""
+        try:
+            import plotly.graph_objects as go
+            from plotly.subplots import make_subplots
+            import plotly.offline as pyo
+
+            # Create subplots
+            fig = make_subplots(
+                rows=len(results), cols=1,
+                subplot_titles=list(results.keys()),
+                vertical_spacing=0.05
+            )
+
+            # Create dates
+            future_dates = pd.date_range(
+                data.index[-1] + timedelta(days=1),
+                periods=forecast_horizon
+            )
+            test_dates = data.index[-test_size:]
+
+            for i, (name, res) in enumerate(results.items(), 1):
+                # Historical data
+                fig.add_trace(
+                    go.Scatter(x=data.index, y=data.values, name=f'{name} - Historical',
+                              line=dict(color='blue', width=2), showlegend=(i == 1)),
+                    row=i, col=1
+                )
+
+                # Test forecast
+                fig.add_trace(
+                    go.Scatter(x=test_dates, y=res['test_forecast'],
+                              name=f'{name} - Test', line=dict(color='red', dash='dash'),
+                              showlegend=(i == 1)),
+                    row=i, col=1
+                )
+
+                # Future forecast
+                fig.add_trace(
+                    go.Scatter(x=future_dates, y=res['future_forecast'],
+                              name=f'{name} - Future', line=dict(color='green', dash='dot'),
+                              showlegend=(i == 1)),
+                    row=i, col=1
+                )
+
+                # Confidence intervals if available
+                if 'test_upper' in res:
+                    fig.add_trace(
+                        go.Scatter(x=test_dates, y=res['test_upper'],
+                                  mode='lines', line=dict(width=0), showlegend=False),
+                        row=i, col=1
+                    )
+                    fig.add_trace(
+                        go.Scatter(x=test_dates, y=res['test_lower'],
+                                  fill='tonexty', fillcolor='rgba(255,0,0,0.2)',
+                                  mode='lines', line=dict(width=0),
+                                  name=f'{name} - 95% CI' if i == 1 else '',
+                                  showlegend=(i == 1)),
+                        row=i, col=1
+                    )
+
+                    fig.add_trace(
+                        go.Scatter(x=future_dates, y=res['future_upper'],
+                                  mode='lines', line=dict(width=0), showlegend=False),
+                        row=i, col=1
+                    )
+                    fig.add_trace(
+                        go.Scatter(x=future_dates, y=res['future_lower'],
+                                  fill='tonexty', fillcolor='rgba(0,255,0,0.2)',
+                                  mode='lines', line=dict(width=0), showlegend=False),
+                        row=i, col=1
+                    )
+
+            # Update layout
+            fig.update_layout(
+                title="Interactive CPU Forecasting Results",
+                height=400 * len(results),
+                showlegend=True
+            )
+
+            for i in range(len(results)):
+                fig.update_yaxes(title_text="CPU Usage (%)", row=i+1, col=1)
+
+            fig.update_xaxes(title_text="Date", row=len(results), col=1)
+
+            # Save as HTML
+            if self.save_plots:
+                output_file = f'{self.output_dir}/interactive_forecast.html'
+                pyo.plot(fig, filename=output_file, auto_open=False)
+                print(f"Interactive plot saved to {output_file}")
+            else:
+                fig.show()
+
+        except ImportError:
+            print("Plotly not installed. Install with: pip install plotly")
+            print("Falling back to matplotlib plots.")
