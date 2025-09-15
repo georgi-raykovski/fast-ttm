@@ -8,7 +8,6 @@ from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
 import pandas as pd
 from datetime import datetime
-from decouple import config as env_config
 
 from forecaster import DailyCPUForecaster
 from utils.data_loader import DataLoader
@@ -224,13 +223,13 @@ async def forecast_metric(request: ForecastRequest):
 
         # Prepare headers for authentication if available
         headers = {}
-        if config.auth_token:
-            headers['Authorization'] = f'Bearer {config.auth_token}'
+        if settings.AUTH_TOKEN:
+            headers['Authorization'] = f'Bearer {settings.AUTH_TOKEN}'
 
         # Use provided values or defaults from config
-        timeout = request.timeout or config.default_timeout
-        forecast_horizon = request.forecast_horizon or config.default_forecast_horizon
-        use_enhanced_ttm = request.use_enhanced_ttm if request.use_enhanced_ttm is not None else config.default_use_enhanced_ttm
+        timeout = request.timeout or settings.REQUEST_TIMEOUT
+        forecast_horizon = request.forecast_horizon or settings.DEFAULT_FORECAST_HORIZON
+        use_enhanced_ttm = request.use_enhanced_ttm if request.use_enhanced_ttm is not None else settings.DEFAULT_USE_ENHANCED_TTM
 
         forecasts = []
 
@@ -238,7 +237,7 @@ async def forecast_metric(request: ForecastRequest):
         for metric in metrics:
             try:
                 # Build data URL for this metric
-                data_url = config.get_data_url(request.instance_name, metric)
+                data_url = settings.get_data_url(request.instance_name, metric)
 
                 # Load data from URL
                 try:
@@ -269,7 +268,7 @@ async def forecast_metric(request: ForecastRequest):
                 )
 
                 # Configure plotting for API usage
-                forecaster.configure_plotting(save_plots=config.save_plots, show_plots=config.show_plots)
+                # forecaster.configure_plotting(save_plots=settings.SAVE_PLOTS, show_plots=settings.SHOW_PLOTS)
 
                 # Run forecasting
                 forecaster.run_all_models()
@@ -378,8 +377,8 @@ async def test_forecast_with_local_data(request: TestForecastRequest):
     """
     try:
         # Use provided values or defaults from config
-        forecast_horizon = request.forecast_horizon or config.default_forecast_horizon
-        use_enhanced_ttm = request.use_enhanced_ttm if request.use_enhanced_ttm is not None else config.default_use_enhanced_ttm
+        forecast_horizon = request.forecast_horizon or settings.DEFAULT_FORECAST_HORIZON
+        use_enhanced_ttm = request.use_enhanced_ttm if request.use_enhanced_ttm is not None else settings.DEFAULT_USE_ENHANCED_TTM
 
         # Validate data file choice
         if request.data_file not in ["data.json", "data-long.json"]:
@@ -399,7 +398,7 @@ async def test_forecast_with_local_data(request: TestForecastRequest):
         )
 
         # Configure plotting for API usage
-        forecaster.configure_plotting(save_plots=config.save_plots, show_plots=config.show_plots)
+        # forecaster.configure_plotting(save_plots=settings.SAVE_PLOTS, show_plots=settings.SHOW_PLOTS)
 
         # Run forecasting
         forecaster.run_all_models()

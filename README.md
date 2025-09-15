@@ -142,28 +142,6 @@ The system supports multiple JSON formats:
   "values": [45.2, 52.1, ...]
 }
 ```
-
-### URL Data Sources
-
-You can load data from any URL that returns JSON in one of the above formats:
-
-```python
-# Public API
-forecaster = load_and_forecast('https://api.example.com/metrics/cpu')
-
-# With authentication
-forecaster = load_and_forecast(
-    'https://api.private.com/metrics',
-    headers={'Authorization': 'Bearer your-token'}
-)
-
-# With custom timeout
-forecaster = load_and_forecast(
-    'https://slow-api.com/data',
-    timeout=120
-)
-```
-
 ## Results
 
 The system provides:
