@@ -31,15 +31,21 @@ def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 
     print("\nModel Performance Summary:")
     print(forecaster.get_summary().to_string(index=False))
 
-    # Plot results (separate plots for each model)
+    # Plot results (separate plots for each model) - saves but doesn't show
     forecaster.plot_results()
 
-    # Also show comparison overview
-    forecaster.plot_overview()
-
-    # Create interactive HTML plot (with zoom and pan)
+    # Create interactive HTML plot (with zoom and pan) - saves but doesn't show
     print("\nCreating interactive plot...")
     forecaster.create_interactive_plot()
+
+    # Get best model predictions
+    best_model_name = forecaster.get_best_model()
+    print(f"\nBest performing model: {best_model_name}")
+
+    best_predictions = forecaster.get_best_model_predictions()
+    print("\nBest model predictions:")
+    for prediction in best_predictions:
+        print(prediction)
 
     return forecaster
 

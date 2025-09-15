@@ -133,3 +133,30 @@ class DailyCPUForecaster:
     def get_best_model(self) -> str:
         """Get the name of the best performing model"""
         return self.visualizer.get_best_model(self.results)
+
+    def get_best_model_predictions(self) -> list:
+        """Get predictions from the best performing model in {date, value} format"""
+        best_model_name = self.get_best_model()
+        if not best_model_name or best_model_name not in self.results:
+            return []
+
+        best_result = self.results[best_model_name]
+
+        # Create future dates
+        import pandas as pd
+        from datetime import timedelta
+
+        future_dates = pd.date_range(
+            self.data.index[-1] + timedelta(days=1),
+            periods=self.forecast_horizon
+        )
+
+        # Format as list of dictionaries
+        predictions = []
+        for date, value in zip(future_dates, best_result['future_forecast']):
+            predictions.append({
+                'date': date.strftime('%Y-%m-%d'),
+                'value': float(value)
+            })
+
+        return predictions

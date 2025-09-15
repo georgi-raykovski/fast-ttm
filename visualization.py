@@ -14,7 +14,7 @@ import os
 class ForecastVisualizer:
     """Visualization utilities for forecasting results"""
 
-    def __init__(self, save_plots: bool = True, output_dir: str = './plots'):
+    def __init__(self, save_plots: bool = True, show_plots: bool = False, output_dir: str = './plots'):
         # Set style
         plt.style.use('seaborn-v0_8-darkgrid')
         sns.set_palette("husl")
@@ -25,19 +25,19 @@ class ForecastVisualizer:
 
         # Setup output directory
         self.save_plots = save_plots
+        self.show_plots = show_plots
         self.output_dir = output_dir
         if save_plots and not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
     def get_best_model(self, results: Dict) -> str:
-        """Return the name of the best performing individual model"""
+        """Return the name of the best performing model (including ensemble models)"""
         best_mae = float('inf')
         best_model = None
         for name, res in results.items():
-            if 'Ensemble' not in name:  # Only individual models
-                if res['metrics']['MAE'] < best_mae:
-                    best_mae = res['metrics']['MAE']
-                    best_model = name
+            if res['metrics']['MAE'] < best_mae:
+                best_mae = res['metrics']['MAE']
+                best_model = name
         return best_model
 
     def plot_results(self, data: pd.Series, results: Dict, forecast_horizon: int,
@@ -95,7 +95,10 @@ class ForecastVisualizer:
                 plt.savefig(f'{self.output_dir}/individual_models.png', dpi=300, bbox_inches='tight')
                 print(f"Individual models plot saved to {self.output_dir}/individual_models.png")
 
-            plt.show()
+            if self.show_plots:
+                plt.show()
+            else:
+                plt.close()
 
         # Plot 2: Ensemble Models with Confidence Intervals
         if ensemble_models:
@@ -143,7 +146,10 @@ class ForecastVisualizer:
                 plt.savefig(f'{self.output_dir}/ensemble_models.png', dpi=300, bbox_inches='tight')
                 print(f"Ensemble models plot saved to {self.output_dir}/ensemble_models.png")
 
-            plt.show()
+            if self.show_plots:
+                plt.show()
+            else:
+                plt.close()
 
     def plot_overview(self, data: pd.Series, results: Dict, forecast_horizon: int,
                      test_size: int) -> None:
@@ -345,7 +351,7 @@ class ForecastVisualizer:
                 output_file = f'{self.output_dir}/interactive_forecast.html'
                 pyo.plot(fig, filename=output_file, auto_open=False)
                 print(f"Interactive plot saved to {output_file}")
-            else:
+            elif self.show_plots:
                 fig.show()
 
         except ImportError:
