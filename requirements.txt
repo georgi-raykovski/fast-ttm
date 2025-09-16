@@ -24,3 +24,6 @@ psutil>=5.9.0
 
 # Performance optimization
 xxhash>=3.0.0
+
+# Enhanced models for yearly data
+pmdarima>=2.0.0  # For SARIMA auto parameter selection

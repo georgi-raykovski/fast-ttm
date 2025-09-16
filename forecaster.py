@@ -8,7 +8,8 @@ from typing import Dict, Any, Tuple, Optional
 import asyncio
 import concurrent.futures
 from models import (SeasonalNaiveModel, TTMModel, NaiveBayesModel,
-                     TTMFineTunedModel, TTMAugmentedModel, TTMEnsembleModel)
+                     TTMFineTunedModel, TTMAugmentedModel, TTMEnsembleModel,
+                     SARIMAModel, FeatureRichNaiveBayesModel, ExponentialSmoothingModel)
 from models.ensemble import EnsembleMethods
 from visualization import ForecastVisualizer
 from utils.logging_config import get_logger
@@ -99,7 +100,33 @@ class DailyCPUForecaster:
             logger.error(f"Error loading TTM models: {e}")
             logger.info("Continuing with SeasonalNaive and NaiveBayes only")
 
+        # Add enhanced models for yearly data
+        self._add_enhanced_models()
+
         logger.info(f"Loaded {len(self.models)} models: {list(self.models.keys())}")
+
+    def _add_enhanced_models(self) -> None:
+        """Add enhanced models optimized for yearly data with graceful fallback"""
+        # Try to add SARIMA model
+        try:
+            self.models['SARIMA'] = SARIMAModel()
+            logger.info("Added SARIMA model")
+        except (ImportError, Exception) as e:
+            logger.warning(f"SARIMA model unavailable: {e}")
+
+        # Try to add Feature-Rich Naive Bayes model
+        try:
+            self.models['FeatureRichNaiveBayes'] = FeatureRichNaiveBayesModel()
+            logger.info("Added Feature-Rich Naive Bayes model")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Feature-Rich Naive Bayes model unavailable: {e}")
+
+        # Try to add Exponential Smoothing model
+        try:
+            self.models['ExponentialSmoothing'] = ExponentialSmoothingModel()
+            logger.info("Added Exponential Smoothing model")
+        except (ImportError, Exception) as e:
+            logger.warning(f"Exponential Smoothing model unavailable: {e}")
 
     def _run_single_model(self, name: str, model: Any) -> Tuple[str, Dict[str, Any]]:
         """Run a single model and return results"""

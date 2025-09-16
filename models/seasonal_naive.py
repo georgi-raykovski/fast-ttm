@@ -13,21 +13,26 @@ logger = get_logger(__name__)
 
 
 class SeasonalNaiveModel(BaseModel):
-    """Enhanced Seasonal Naive model with automatic pattern selection"""
+    """Enhanced Seasonal Naive model with automatic pattern selection and multiple seasonalities"""
 
     def __init__(self):
         super().__init__("SeasonalNaive")
         self.best_season_length = 7
         self.seasonal_pattern = None
+        self.multiple_patterns = {}
+        self.pattern_weights = {}
 
     def fit(self, data: pd.Series) -> None:
-        """Fit the model by finding the best seasonal pattern"""
+        """Fit the model by finding the best seasonal pattern(s)"""
+        # Determine seasonal lengths based on data size
+        seasonal_lengths = self._get_seasonal_lengths(len(data))
+
         # Test different seasonal patterns to find the best one
         best_mae = float('inf')
         best_season = 7
+        pattern_performance = {}
 
-        # Test various seasonal lengths including 30 days
-        seasonal_lengths = [7, 14, 30] if len(data) >= 30 else [7, 14]
+        logger.info(f"Testing seasonal patterns: {seasonal_lengths} on {len(data)} data points")
 
         # Reserve last 20% for validation (minimum 3 points)
         val_size = max(3, len(data) // 5)
@@ -51,6 +56,24 @@ class SeasonalNaiveModel(BaseModel):
         self.is_fitted = True
 
         logger.info(f"Best seasonal pattern: {self.best_season_length} days")
+
+    def _get_seasonal_lengths(self, data_length: int) -> list:
+        """Determine appropriate seasonal lengths based on data size"""
+        if data_length >= 365:
+            # With yearly data, test all major patterns
+            return [7, 14, 30, 91, 182, 365]
+        elif data_length >= 182:
+            # With 6+ months, test up to quarterly
+            return [7, 14, 30, 91]
+        elif data_length >= 90:
+            # With 3+ months, test up to monthly
+            return [7, 14, 30]
+        elif data_length >= 30:
+            # With 1+ month, test weekly and bi-weekly
+            return [7, 14]
+        else:
+            # Limited data, just weekly
+            return [7]
 
     def forecast(self, horizon: int) -> np.ndarray:
         """Generate forecasts using the best seasonal pattern"""
