@@ -14,7 +14,8 @@ import os
 class ForecastVisualizer:
     """Visualization utilities for forecasting results"""
 
-    def __init__(self, save_plots: bool = True, show_plots: bool = False, output_dir: str = './plots') -> None:
+    def __init__(self, save_plots: bool = True, show_plots: bool = False, output_dir: str = './plots',
+                 metric_name: str = 'cpu') -> None:
         # Set matplotlib backend to prevent GUI windows when not showing plots
         if not show_plots:
             current_backend = matplotlib.get_backend()
@@ -37,6 +38,7 @@ class ForecastVisualizer:
         self.save_plots = save_plots
         self.show_plots = show_plots
         self.output_dir = output_dir
+        self.metric_name = metric_name.lower().replace(' ', '_')  # Sanitize metric name for filenames
         if save_plots and not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
@@ -66,7 +68,7 @@ class ForecastVisualizer:
                 ax = axes[i]
 
                 # Plot historical data
-                ax.plot(data.index, data.values, label='Historical CPU',
+                ax.plot(data.index, data.values, label=f'Historical {self.metric_name.upper()}',
                        color='blue', linewidth=2)
 
                 # Plot test forecasts
@@ -79,7 +81,7 @@ class ForecastVisualizer:
 
                 ax.set_title(f"{name} Model Forecast", fontsize=14)
                 ax.set_xlabel("Date", fontsize=12)
-                ax.set_ylabel("CPU Usage (%)", fontsize=12)
+                ax.set_ylabel(f"{self.metric_name.upper()} Usage (%)", fontsize=12)
                 ax.legend()
                 ax.grid(True, alpha=0.3)
 
@@ -98,8 +100,9 @@ class ForecastVisualizer:
 
             # Save plot
             if self.save_plots:
-                plt.savefig(f'{self.output_dir}/individual_models.png', dpi=300, bbox_inches='tight')
-                print(f"Individual models plot saved to {self.output_dir}/individual_models.png")
+                filename = f'{self.output_dir}/{self.metric_name}_individual_models.png'
+                plt.savefig(filename, dpi=300, bbox_inches='tight')
+                print(f"Individual models plot saved to {filename}")
 
             if self.show_plots:
                 plt.show()
@@ -116,7 +119,7 @@ class ForecastVisualizer:
                 ax = axes[i]
 
                 # Plot historical data
-                ax.plot(data.index, data.values, label='Historical CPU',
+                ax.plot(data.index, data.values, label=f'Historical {self.metric_name.upper()}',
                        color='blue', linewidth=2)
 
                 # Plot test forecasts
@@ -136,7 +139,7 @@ class ForecastVisualizer:
 
                 ax.set_title(f"{name} Forecast with Confidence Intervals", fontsize=14)
                 ax.set_xlabel("Date", fontsize=12)
-                ax.set_ylabel("CPU Usage (%)", fontsize=12)
+                ax.set_ylabel(f"{self.metric_name.upper()} Usage (%)", fontsize=12)
                 ax.legend()
                 ax.grid(True, alpha=0.3)
 
@@ -155,8 +158,9 @@ class ForecastVisualizer:
 
             # Save plot
             if self.save_plots:
-                plt.savefig(f'{self.output_dir}/ensemble_models.png', dpi=300, bbox_inches='tight')
-                print(f"Ensemble models plot saved to {self.output_dir}/ensemble_models.png")
+                filename = f'{self.output_dir}/{self.metric_name}_ensemble_models.png'
+                plt.savefig(filename, dpi=300, bbox_inches='tight')
+                print(f"Ensemble models plot saved to {filename}")
 
             if self.show_plots:
                 plt.show()
@@ -200,12 +204,15 @@ class ForecastVisualizer:
         ax3.set_xticks(range(len(models)))
         ax3.set_xticklabels(models, rotation=45, ha='right')
 
+        plt.suptitle(f'{self.metric_name.upper()} Forecasting Model Performance Comparison', fontsize=16)
+
         plt.tight_layout()
 
         # Save plot
         if self.save_plots:
-            plt.savefig(f'{self.output_dir}/model_comparison.png', dpi=300, bbox_inches='tight')
-            print(f"Model comparison plot saved to {self.output_dir}/model_comparison.png")
+            filename = f'{self.output_dir}/{self.metric_name}_model_comparison.png'
+            plt.savefig(filename, dpi=300, bbox_inches='tight')
+            print(f"Model comparison plot saved to {filename}")
 
         if self.show_plots:
             plt.show()
@@ -251,7 +258,7 @@ class ForecastVisualizer:
             for i, (name, res) in enumerate(results.items(), 1):
                 # Historical data
                 fig.add_trace(
-                    go.Scatter(x=data.index, y=data.values, name=f'{name} - Historical',
+                    go.Scatter(x=data.index, y=data.values, name=f'{name} - Historical {self.metric_name.upper()}',
                               line=dict(color='blue', width=2), showlegend=(i == 1)),
                     row=i, col=1
                 )
@@ -302,19 +309,19 @@ class ForecastVisualizer:
 
             # Update layout
             fig.update_layout(
-                title="Interactive CPU Forecasting Results",
+                title=f"Interactive {self.metric_name.upper()} Forecasting Results",
                 height=400 * len(results),
                 showlegend=True
             )
 
             for i in range(len(results)):
-                fig.update_yaxes(title_text="CPU Usage (%)", row=i+1, col=1)
+                fig.update_yaxes(title_text=f"{self.metric_name.upper()} Usage (%)", row=i+1, col=1)
 
             fig.update_xaxes(title_text="Date", row=len(results), col=1)
 
             # Save as HTML
             if self.save_plots:
-                output_file = f'{self.output_dir}/interactive_forecast.html'
+                output_file = f'{self.output_dir}/{self.metric_name}_interactive_forecast.html'
                 pyo.plot(fig, filename=output_file, auto_open=False)
                 print(f"Interactive plot saved to {output_file}")
             elif self.show_plots:

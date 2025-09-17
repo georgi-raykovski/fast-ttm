@@ -2,9 +2,8 @@
 FastAPI application for TTM Forecasting System
 """
 
-import os
-from typing import List, Union, Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Depends
+from typing import List, Union, Dict, Any
+from fastapi import FastAPI, HTTPException
 import pandas as pd
 from datetime import datetime
 
@@ -12,13 +11,12 @@ from forecaster import DailyCPUForecaster
 from utils.data_loader import DataLoader
 from utils.error_handlers import get_error_handlers
 from utils.forecast_helpers import (
-    create_error_forecast_response, create_successful_forecast_response,
+    create_successful_forecast_response,
     validate_metrics_list, extract_request_config, ForecastErrorHandler
 )
 from schemas import (
-    ForecastRequest, TestForecastRequest, ForecastResponse, TestForecastResponse,
-    HealthResponse, AvailableModelsResponse, MetricsResponse, MetricForecast,
-    ModelPerformance, PredictionPoint
+    ForecastRequest, ForecastResponse,
+    HealthResponse, AvailableModelsResponse, MetricsResponse, MetricForecast
 )
 import psutil
 import time
@@ -73,7 +71,7 @@ async def health_check():
             available_models=available_models
         )
 
-    except Exception as e:
+    except Exception:
         # If health check itself fails, return minimal response
         return HealthResponse(
             status="degraded",

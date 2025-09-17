@@ -17,6 +17,8 @@ logger = get_logger(__name__)
 try:
     from statsmodels.tsa.holtwinters import ExponentialSmoothing
     from statsmodels.tsa.seasonal import seasonal_decompose
+    from statsmodels.stats.diagnostic import acorr_ljungbox
+    from statsmodels.tsa.stattools import adfuller, kpss
     EXPONENTIAL_SMOOTHING_AVAILABLE = True
 except ImportError:
     EXPONENTIAL_SMOOTHING_AVAILABLE = False
@@ -25,62 +27,56 @@ except ImportError:
 
 class ExponentialSmoothingModel(BaseModel):
     """
-    Holt-Winters Exponential Smoothing model with automatic configuration.
+    Enhanced Holt-Winters Exponential Smoothing model with automatic configuration
+    and intelligent feature selection.
 
     Features:
     - Automatic trend detection (additive/multiplicative/none)
     - Automatic seasonality detection (additive/multiplicative/none)
-    - Multiple seasonal period testing (7, 30, 91, 365 days)
-    - Robust parameter optimization
+    - Intelligent seasonal period selection based on data characteristics
+    - Statistical tests for stationarity and seasonality
+    - Robust parameter optimization with cross-validation
     - Confidence intervals for forecasts
+    - Feature importance analysis
     """
 
-    def __init__(self, seasonal_periods: Optional[List[int]] = None):
-        super().__init__("ExponentialSmoothing")
+    def __init__(self, seasonal_periods: Optional[List[int]] = None,
+                 auto_feature_selection: bool = True,
+                 cross_validate: bool = True):
+        super().__init__("ExponentialSmoothing_Enhanced")
         self.model = None
-        self.seasonal_periods = seasonal_periods or [7, 30, 91]  # Weekly, monthly, quarterly
+        self.seasonal_periods = seasonal_periods
+        self.auto_feature_selection = auto_feature_selection
+        self.cross_validate = cross_validate
         self.best_seasonal_period = 7
         self.best_config = {}
         self.model_info = {}
+        self.data_characteristics = {}
+        self.feature_analysis = {}
 
     def fit(self, data: pd.Series) -> None:
-        """Fit Exponential Smoothing model with automatic configuration"""
+        """Fit Enhanced Exponential Smoothing model with intelligent feature selection"""
         if not EXPONENTIAL_SMOOTHING_AVAILABLE:
             raise ImportError("Exponential Smoothing model requires statsmodels. Install with: pip install statsmodels")
 
         try:
-            logger.info(f"Fitting Exponential Smoothing on {len(data)} data points")
+            logger.info(f"Fitting Enhanced Exponential Smoothing on {len(data)} data points")
 
-            # Determine appropriate seasonal periods
-            seasonal_periods = self._get_seasonal_periods(len(data))
+            # Analyze data characteristics for feature selection
+            if self.auto_feature_selection:
+                self._analyze_data_characteristics(data)
 
-            # Test different configurations
-            best_aic = float('inf')
-            best_model = None
-            best_config = {}
+            # Intelligent seasonal period selection
+            seasonal_periods = self._intelligent_seasonal_selection(data)
 
-            configs = self._generate_configurations(seasonal_periods)
-
-            for config in configs:
-                try:
-                    model = self._fit_single_config(data, config)
-                    if model is not None and hasattr(model, 'aic'):
-                        aic = model.aic
-
-                        if aic < best_aic:
-                            best_aic = aic
-                            best_model = model
-                            best_config = config
-
-                            logger.info(f"New best ES config: period={config['seasonal_periods']}, "
-                                      f"trend={config['trend']}, seasonal={config['seasonal']}, AIC={aic:.2f}")
-
-                except Exception as e:
-                    logger.warning(f"ES config {config} failed: {e}")
-                    continue
+            # Test different configurations with cross-validation if enabled
+            if self.cross_validate and len(data) > 50:
+                best_aic, best_model, best_config = self._cross_validate_configurations(data, seasonal_periods)
+            else:
+                best_aic, best_model, best_config = self._evaluate_configurations(data, seasonal_periods)
 
             if best_model is None:
-                raise ValueError("Could not fit Exponential Smoothing with any configuration")
+                raise ValueError("Could not fit Enhanced Exponential Smoothing with any configuration")
 
             self.model = best_model
             self.best_config = best_config
@@ -97,10 +93,10 @@ class ExponentialSmoothingModel(BaseModel):
                 'damped_trend': best_config.get('damped_trend', False)
             }
 
-            logger.info(f"Exponential Smoothing fitted successfully: {self.model_info}")
+            logger.info(f"Enhanced Exponential Smoothing fitted successfully: {self.model_info}")
 
         except Exception as e:
-            logger.error(f"Exponential Smoothing fitting failed: {e}")
+            logger.error(f"Enhanced Exponential Smoothing fitting failed: {e}")
             raise
 
     def _get_seasonal_periods(self, data_length: int) -> List[int]:
@@ -202,17 +198,19 @@ class ExponentialSmoothingModel(BaseModel):
 
             # Generate prediction intervals if possible
             try:
-                prediction_intervals = self.model.get_prediction(
-                    start=len(self.model.fittedvalues),
-                    end=len(self.model.fittedvalues) + horizon - 1
-                )
-
-                # Store confidence intervals
-                conf_int = prediction_intervals.conf_int()
-                self._last_confidence_intervals = {
-                    'lower': conf_int.iloc[:, 0].values,
-                    'upper': conf_int.iloc[:, 1].values
-                }
+                # Try to get forecast with confidence intervals
+                if hasattr(self.model, 'forecast'):
+                    forecast_with_ci = self.model.forecast(steps=horizon, return_conf_int=True)
+                    if isinstance(forecast_with_ci, tuple):
+                        _, conf_int = forecast_with_ci
+                        self._last_confidence_intervals = {
+                            'lower': conf_int[:, 0],
+                            'upper': conf_int[:, 1]
+                        }
+                    else:
+                        self._last_confidence_intervals = None
+                else:
+                    self._last_confidence_intervals = None
 
             except Exception as e:
                 logger.warning(f"Could not generate confidence intervals: {e}")
@@ -276,6 +274,249 @@ class ExponentialSmoothingModel(BaseModel):
         except Exception as e:
             logger.warning(f"Series decomposition failed: {e}")
             return None
+
+    def _analyze_data_characteristics(self, data: pd.Series) -> None:
+        """Analyze data characteristics for intelligent feature selection"""
+        try:
+            logger.info("Analyzing data characteristics for feature selection")
+
+            # Basic statistics
+            self.data_characteristics = {
+                'length': len(data),
+                'mean': float(data.mean()),
+                'std': float(data.std()),
+                'cv': float(data.std() / data.mean()) if data.mean() != 0 else float('inf'),
+                'skewness': float(data.skew()),
+                'kurtosis': float(data.kurtosis())
+            }
+
+            # Stationarity tests
+            try:
+                adf_result = adfuller(data.dropna())
+                self.data_characteristics['adf_statistic'] = adf_result[0]
+                self.data_characteristics['adf_pvalue'] = adf_result[1]
+                self.data_characteristics['is_stationary_adf'] = adf_result[1] < 0.05
+
+                kpss_result = kpss(data.dropna())
+                self.data_characteristics['kpss_statistic'] = kpss_result[0]
+                self.data_characteristics['kpss_pvalue'] = kpss_result[1]
+                self.data_characteristics['is_stationary_kpss'] = kpss_result[1] > 0.05
+            except Exception as e:
+                logger.warning(f"Stationarity tests failed: {e}")
+                self.data_characteristics['is_stationary_adf'] = False
+                self.data_characteristics['is_stationary_kpss'] = False
+
+            # Seasonality detection
+            self._detect_seasonality_patterns(data)
+
+            # Trend analysis
+            self._analyze_trend_characteristics(data)
+
+        except Exception as e:
+            logger.warning(f"Data characteristics analysis failed: {e}")
+            self.data_characteristics = {}
+
+    def _detect_seasonality_patterns(self, data: pd.Series) -> None:
+        """Detect seasonal patterns in the data"""
+        try:
+            # Auto-correlation analysis for different lags
+            seasonal_strength = {}
+
+            # Test common seasonal periods
+            test_periods = [7, 14, 30, 91, 182, 365]
+
+            for period in test_periods:
+                if len(data) >= 3 * period:
+                    try:
+                        # Calculate auto-correlation at this lag
+                        autocorr = data.autocorr(lag=period)
+                        seasonal_strength[period] = abs(autocorr) if not pd.isna(autocorr) else 0
+                    except:
+                        seasonal_strength[period] = 0
+
+            self.data_characteristics['seasonal_strength'] = seasonal_strength
+
+            # Identify strongest seasonal period
+            if seasonal_strength:
+                best_period = max(seasonal_strength.keys(), key=lambda k: seasonal_strength[k])
+                self.data_characteristics['strongest_seasonal_period'] = best_period
+                self.data_characteristics['max_seasonal_strength'] = seasonal_strength[best_period]
+
+        except Exception as e:
+            logger.warning(f"Seasonality detection failed: {e}")
+
+    def _analyze_trend_characteristics(self, data: pd.Series) -> None:
+        """Analyze trend characteristics"""
+        try:
+            # Linear trend analysis
+            x = np.arange(len(data))
+            trend_coef = np.polyfit(x, data.values, 1)[0]
+
+            self.data_characteristics['linear_trend_slope'] = float(trend_coef)
+            self.data_characteristics['has_strong_trend'] = abs(trend_coef) > data.std() / len(data)
+
+            # Moving average trend
+            if len(data) >= 30:
+                ma_30 = data.rolling(30).mean()
+                trend_strength = (ma_30.iloc[-1] - ma_30.iloc[29]) / ma_30.std()
+                self.data_characteristics['ma_trend_strength'] = float(trend_strength)
+
+        except Exception as e:
+            logger.warning(f"Trend analysis failed: {e}")
+
+    def _intelligent_seasonal_selection(self, data: pd.Series) -> List[int]:
+        """Intelligently select seasonal periods based on data analysis"""
+        if self.seasonal_periods is not None:
+            return self.seasonal_periods
+
+        # Start with data-length-based selection
+        base_periods = self._get_seasonal_periods(len(data))
+
+        # If we have seasonality analysis, refine the selection
+        if 'seasonal_strength' in self.data_characteristics:
+            seasonal_strength = self.data_characteristics['seasonal_strength']
+
+            # Filter periods with significant seasonal strength (> 0.1)
+            significant_periods = [p for p, s in seasonal_strength.items() if s > 0.1]
+
+            if significant_periods:
+                # Combine base periods with significant periods, prioritize significant ones
+                all_periods = list(set(base_periods + significant_periods))
+                # Sort by seasonal strength (descending) then by period (ascending)
+                all_periods.sort(key=lambda p: (-seasonal_strength.get(p, 0), p))
+                return all_periods[:5]  # Limit to top 5 periods
+
+        return base_periods
+
+    def _cross_validate_configurations(self, data: pd.Series, seasonal_periods: List[int]) -> tuple:
+        """Cross-validate different model configurations"""
+        try:
+            logger.info("Cross-validating model configurations")
+
+            configs = self._generate_configurations(seasonal_periods)
+            best_score = float('inf')
+            best_model = None
+            best_config = {}
+
+            # Use time series cross-validation
+            cv_window = min(len(data) // 4, 30)  # Use 1/4 of data or 30 points as validation
+            train_size = len(data) - cv_window
+
+            for config in configs:
+                try:
+                    cv_scores = []
+
+                    # Perform 3-fold time series CV
+                    for fold in range(3):
+                        fold_train_end = train_size - fold * cv_window // 3
+                        fold_train_start = max(0, fold_train_end - train_size)
+                        fold_val_end = fold_train_end + cv_window // 3
+
+                        if fold_train_end - fold_train_start < 2 * config.get('seasonal_periods', 7):
+                            continue
+
+                        train_fold = data.iloc[fold_train_start:fold_train_end]
+                        val_fold = data.iloc[fold_train_end:fold_val_end]
+
+                        if len(train_fold) < 2 * config.get('seasonal_periods', 7) or len(val_fold) == 0:
+                            continue
+
+                        fold_model = self._fit_single_config(train_fold, config)
+                        if fold_model is not None:
+                            try:
+                                forecast = fold_model.forecast(len(val_fold))
+                                mse = np.mean((val_fold.values - forecast) ** 2)
+                                cv_scores.append(mse)
+                            except:
+                                continue
+
+                    if cv_scores:
+                        avg_score = np.mean(cv_scores)
+                        if avg_score < best_score:
+                            best_score = avg_score
+                            # Refit on full training data
+                            best_model = self._fit_single_config(data, config)
+                            best_config = config
+
+                            logger.info(f"New best CV config: period={config['seasonal_periods']}, "
+                                      f"trend={config['trend']}, seasonal={config['seasonal']}, CV_MSE={avg_score:.2f}")
+
+                except Exception as e:
+                    logger.debug(f"CV failed for config {config}: {e}")
+                    continue
+
+            # If CV failed, fall back to AIC selection
+            if best_model is None:
+                logger.warning("Cross-validation failed, falling back to AIC selection")
+                return self._evaluate_configurations(data, seasonal_periods)
+
+            # Get AIC for the best model
+            best_aic = getattr(best_model, 'aic', float('inf'))
+            return best_aic, best_model, best_config
+
+        except Exception as e:
+            logger.warning(f"Cross-validation failed: {e}, falling back to AIC selection")
+            return self._evaluate_configurations(data, seasonal_periods)
+
+    def _evaluate_configurations(self, data: pd.Series, seasonal_periods: List[int]) -> tuple:
+        """Evaluate configurations using AIC (fallback method)"""
+        configs = self._generate_configurations(seasonal_periods)
+        best_aic = float('inf')
+        best_model = None
+        best_config = {}
+
+        for config in configs:
+            try:
+                model = self._fit_single_config(data, config)
+                if model is not None and hasattr(model, 'aic'):
+                    aic = model.aic
+
+                    if aic < best_aic:
+                        best_aic = aic
+                        best_model = model
+                        best_config = config
+
+                        logger.info(f"New best ES config: period={config['seasonal_periods']}, "
+                                  f"trend={config['trend']}, seasonal={config['seasonal']}, AIC={aic:.2f}")
+
+            except Exception as e:
+                logger.warning(f"ES config {config} failed: {e}")
+                continue
+
+        return best_aic, best_model, best_config
+
+    def get_feature_importance(self) -> Dict[str, float]:
+        """Get feature importance based on model characteristics"""
+        if not self.is_fitted:
+            return {}
+
+        importance = {}
+
+        # Seasonal component importance
+        if self.best_config.get('seasonal') is not None:
+            seasonal_strength = self.data_characteristics.get('max_seasonal_strength', 0.5)
+            importance['seasonality'] = float(seasonal_strength)
+
+        # Trend component importance
+        if self.best_config.get('trend') is not None:
+            trend_strength = abs(self.data_characteristics.get('linear_trend_slope', 0))
+            trend_strength = min(trend_strength / self.data_characteristics.get('std', 1), 1.0)
+            importance['trend'] = float(trend_strength)
+
+        # Damping importance
+        if self.best_config.get('damped_trend', False):
+            importance['damping'] = 0.3
+
+        # Normalize to sum to 1
+        total = sum(importance.values())
+        if total > 0:
+            importance = {k: v / total for k, v in importance.items()}
+
+        return importance
+
+    def get_data_characteristics(self) -> Dict[str, Any]:
+        """Get analyzed data characteristics"""
+        return self.data_characteristics.copy()
 
     def get_fitted_values(self) -> Optional[pd.Series]:
         """Get fitted values from the model"""

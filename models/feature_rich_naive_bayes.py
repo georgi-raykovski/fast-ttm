@@ -48,8 +48,18 @@ class FeatureRichNaiveBayesModel(BaseModel):
             # Remove rows with NaN values (from lag features)
             features_df = features_df.dropna()
 
-            if len(features_df) < 20:
-                raise ValueError(f"Insufficient data after feature creation: {len(features_df)} samples")
+            min_samples = max(10, len(self.feature_names) + 1)  # At least 10 samples or features + 1
+            if len(features_df) < min_samples:
+                # Reduce feature complexity for small datasets
+                logger.warning(f"Small dataset ({len(features_df)} samples), reducing feature complexity")
+                # Use only basic features for small datasets
+                basic_features = [col for col in features_df.columns
+                                if col.startswith(('lag_', 'rolling_mean_', 'day_of_week', 'is_weekend')) or col == 'target']
+                if len(basic_features) > 1:
+                    features_df = features_df[basic_features]
+                    logger.info(f"Reduced to {len(basic_features)-1} basic features")
+                else:
+                    raise ValueError(f"Insufficient data after feature creation: {len(features_df)} samples")
 
             # Prepare target variable (binned values)
             target_values = features_df['target'].values

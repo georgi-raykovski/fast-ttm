@@ -7,9 +7,14 @@ from datetime import timedelta
 from typing import Dict, Any, Tuple, Optional
 import asyncio
 import concurrent.futures
-from models import (SeasonalNaiveModel, TTMModel, NaiveBayesModel,
-                     TTMFineTunedModel, TTMAugmentedModel, TTMEnsembleModel,
-                     SARIMAModel, FeatureRichNaiveBayesModel, ExponentialSmoothingModel)
+from models import (SeasonalNaiveModel, FeatureRichNaiveBayesModel,
+                     ExponentialSmoothingModel, PROPHET_AVAILABLE, LIGHTGBM_AVAILABLE)
+
+# Import optional models only if available
+if PROPHET_AVAILABLE:
+    from models import ProphetModel
+if LIGHTGBM_AVAILABLE:
+    from models import LightGBMQuantileModel
 from models.ensemble import EnsembleMethods
 from visualization import ForecastVisualizer
 from utils.logging_config import get_logger
@@ -51,82 +56,41 @@ class DailyCPUForecaster:
         # Initialize components
         self.results = {}
         self.ensemble_methods = EnsembleMethods()
-        self.visualizer = ForecastVisualizer(save_plots=True, show_plots=False)
+        self.visualizer = ForecastVisualizer(save_plots=True, show_plots=False, metric_name='cpu')
 
-        # Initialize models with TTM error handling
+        # Initialize core models
         self.models = {
             'SeasonalNaive': SeasonalNaiveModel(),
-            'NaiveBayes': NaiveBayesModel()
+            'FeatureRichNaiveBayes': FeatureRichNaiveBayesModel(),
+            'ExponentialSmoothing': ExponentialSmoothingModel()
         }
 
-        # Try to add TTM models with graceful fallback
-        try:
-            if use_enhanced_ttm:
-                logger.info("Attempting to load enhanced TTM models...")
-
-                # Try basic TTM first
-                try:
-                    self.models['TTM_ZeroShot'] = TTMModel()
-                except (ImportError, TTMLibraryError, ModelNotAvailableError) as e:
-                    logger.warning(f"Basic TTM model unavailable: {e}")
-
-                # Try enhanced TTM models
-                try:
-                    self.models['TTM_Ensemble'] = TTMEnsembleModel()
-                except (ImportError, TTMLibraryError, ModelNotAvailableError) as e:
-                    logger.warning(f"TTM Ensemble model unavailable: {e}")
-
-                try:
-                    self.models['TTM_Augmented'] = TTMAugmentedModel()
-                except (ImportError, TTMLibraryError, ModelNotAvailableError) as e:
-                    logger.warning(f"TTM Augmented model unavailable: {e}")
-
-                # Add fine-tuning model if we have sufficient data
-                if len(self.train) >= 30:
-                    try:
-                        self.models['TTM_FineTuned'] = TTMFineTunedModel()
-                    except (ImportError, TTMLibraryError, ModelNotAvailableError) as e:
-                        logger.warning(f"TTM Fine-tuned model unavailable: {e}")
-
-            else:
-                # Try to add basic TTM model
-                try:
-                    self.models['TTM_ZeroShot'] = TTMModel()
-                except (ImportError, TTMLibraryError, ModelNotAvailableError) as e:
-                    logger.warning(f"TTM library not available: {e}")
-                    logger.info("Continuing with non-TTM models only")
-
-        except Exception as e:
-            logger.error(f"Error loading TTM models: {e}")
-            logger.info("Continuing with SeasonalNaive and NaiveBayes only")
-
-        # Add enhanced models for yearly data
+        # Add enhanced models with graceful fallback
         self._add_enhanced_models()
 
         logger.info(f"Loaded {len(self.models)} models: {list(self.models.keys())}")
 
     def _add_enhanced_models(self) -> None:
-        """Add enhanced models optimized for yearly data with graceful fallback"""
-        # Try to add SARIMA model
-        try:
-            self.models['SARIMA'] = SARIMAModel()
-            logger.info("Added SARIMA model")
-        except (ImportError, Exception) as e:
-            logger.warning(f"SARIMA model unavailable: {e}")
+        """Add enhanced models with graceful fallback"""
+        # Try to add Prophet model
+        if PROPHET_AVAILABLE:
+            try:
+                self.models['Prophet'] = ProphetModel()
+                logger.info("Added Prophet model")
+            except Exception as e:
+                logger.warning(f"Prophet model failed to initialize: {e}")
+        else:
+            logger.warning("Prophet model unavailable: library not installed")
 
-        # Try to add Feature-Rich Naive Bayes model
-        try:
-            self.models['FeatureRichNaiveBayes'] = FeatureRichNaiveBayesModel()
-            logger.info("Added Feature-Rich Naive Bayes model")
-        except (ImportError, Exception) as e:
-            logger.warning(f"Feature-Rich Naive Bayes model unavailable: {e}")
-
-        # Try to add Exponential Smoothing model
-        try:
-            self.models['ExponentialSmoothing'] = ExponentialSmoothingModel()
-            logger.info("Added Exponential Smoothing model")
-        except (ImportError, Exception) as e:
-            logger.warning(f"Exponential Smoothing model unavailable: {e}")
+        # Try to add LightGBM Quantile model
+        if LIGHTGBM_AVAILABLE:
+            try:
+                self.models['LightGBM_Quantile'] = LightGBMQuantileModel()
+                logger.info("Added LightGBM Quantile model")
+            except Exception as e:
+                logger.warning(f"LightGBM Quantile model failed to initialize: {e}")
+        else:
+            logger.warning("LightGBM Quantile model unavailable: library not installed or missing dependencies")
 
     def _run_single_model(self, name: str, model: Any) -> Tuple[str, Dict[str, Any]]:
         """Run a single model and return results"""
@@ -302,10 +266,11 @@ class DailyCPUForecaster:
         return result
 
     def configure_plotting(self, save_plots: bool = True, show_plots: bool = False,
-                          output_dir: str = './plots'):
+                          output_dir: str = './plots', metric_name: str = 'cpu'):
         """Configure plotting behavior"""
         self.visualizer = ForecastVisualizer(
             save_plots=save_plots,
             show_plots=show_plots,
-            output_dir=output_dir
+            output_dir=output_dir,
+            metric_name=metric_name
         )
