@@ -17,23 +17,3 @@ gunicorn>=21.2.0
 
 # System monitoring
 psutil>=5.9.0
-
-# Performance optimization
-xxhash>=3.0.0
-
-# New enhanced models
-prophet>=1.1.4  # Facebook Prophet for time series forecasting
-lightgbm>=4.0.0  # LightGBM for gradient boosting with quantile regression
-
-# LightGBM installation notes:
-# - On macOS: First run "brew install libomp" then "pip install lightgbm"
-# - On Linux/Windows: pip install should work directly
-# - If installation fails, the system will work without LightGBM
-
-# TTM models (optional - commented out due to context length requirements)
-# torch>=2.0.0 --index-url https://download.pytorch.org/whl/cpu
-# transformers>=4.21.0
-# git+https://github.com/IBM/tsfm.git
-
-# Removed dependencies (no longer needed)
-# pmdarima>=2.0.0  # SARIMA model was removed

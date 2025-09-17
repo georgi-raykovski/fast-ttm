@@ -10,8 +10,9 @@ logger = get_logger(__name__)
 
 
 def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 30,
-                     use_enhanced_ttm: bool = False, generate_plots: bool = True,
-                     save_plots: bool = True, show_plots: bool = False, **kwargs):
+                     use_enhanced_ttm: bool = False, test_split: float = 0.3,
+                     generate_plots: bool = True, save_plots: bool = True,
+                     show_plots: bool = False, **kwargs):
     """
     Load data and run all forecasting models
 
@@ -19,6 +20,7 @@ def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 
         data_source: File path or URL to data
         forecast_horizon: Number of days to forecast
         use_enhanced_ttm: Whether to use enhanced TTM models (fine-tuning, ensemble, augmentation)
+        test_split: Fraction of data to use for testing (default 0.3 = 30%)
         generate_plots: Whether to generate plots at all (for performance)
         save_plots: Whether to save plots to disk
         show_plots: Whether to display plots interactively
@@ -29,9 +31,10 @@ def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 
 
     logger.info(f"Loaded {len(series)} days of data from {series.index.min()} to {series.index.max()}")
 
-    # Initialize forecaster and run models
+    # Initialize forecaster and run models with configurable test data split
+    test_size = int(len(series) * test_split)
     forecaster = DailyCPUForecaster(series, forecast_horizon=forecast_horizon,
-                                   use_enhanced_ttm=use_enhanced_ttm)
+                                   test_size=test_size, use_enhanced_ttm=use_enhanced_ttm)
 
     # Configure plotting behavior
     if generate_plots:
@@ -90,7 +93,7 @@ def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 
 
 
 def get_predictions_only(data_source: str = './data.json', forecast_horizon: int = 30,
-                        use_enhanced_ttm: bool = False, **kwargs):
+                        use_enhanced_ttm: bool = False, test_split: float = 0.3, **kwargs):
     """
     Fast prediction-only function that skips all plotting for maximum performance
 
@@ -98,6 +101,7 @@ def get_predictions_only(data_source: str = './data.json', forecast_horizon: int
         data_source: File path or URL to data
         forecast_horizon: Number of days to forecast
         use_enhanced_ttm: Whether to use enhanced TTM models
+        test_split: Fraction of data to use for testing (default 0.3 = 30%)
         **kwargs: Additional arguments for URL loading (timeout, headers)
 
     Returns:
@@ -107,6 +111,7 @@ def get_predictions_only(data_source: str = './data.json', forecast_horizon: int
         data_source=data_source,
         forecast_horizon=forecast_horizon,
         use_enhanced_ttm=use_enhanced_ttm,
+        test_split=test_split,
         generate_plots=False,
         **kwargs
     )
