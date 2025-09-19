@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 import pandas as pd
 from datetime import datetime
 
-from forecaster import DailyCPUForecaster
+from forecaster import ExponentialSmoothingForecaster
 from utils.data_loader import DataLoader
 from utils.error_handlers import get_error_handlers
 from utils.forecast_helpers import (
@@ -28,9 +28,9 @@ app_start_time = time.time()
 
 # FastAPI app
 app = FastAPI(
-    title="TTM Forecasting API",
-    description="Time Series Forecasting API for CPU, Memory, and IO metrics",
-    version="1.0.0"
+    title="Optimized Exponential Smoothing Forecasting API",
+    description="High-performance Time Series Forecasting API using Enhanced Exponential Smoothing with parallel processing, smart caching, and batch optimization",
+    version="2.0.0"
 )
 
 # Register error handlers
@@ -51,14 +51,14 @@ async def health_check():
         memory_info = process.memory_info()
         memory_usage_mb = memory_info.rss / 1024 / 1024
 
-        # Get available models (simplified check)
-        available_models = ["SeasonalNaive", "NaiveBayes"]
+        # Get available models (focused on exponential smoothing)
+        available_models = ["ExponentialSmoothing"]
 
-        # Check if TTM is available
+        # Check if other models are available
         try:
-            from models.ttm_model import TTM_AVAILABLE
-            if TTM_AVAILABLE:
-                available_models.append("TTM")
+            from models.exponential_smoothing_model import EXPONENTIAL_SMOOTHING_AVAILABLE
+            if not EXPONENTIAL_SMOOTHING_AVAILABLE:
+                available_models = ["Fallback"]
         except:
             pass
 
@@ -84,8 +84,8 @@ async def health_check():
 async def get_available_models():
     """Get list of available forecasting models"""
     return AvailableModelsResponse(
-        models=["SeasonalNaive", "NaiveBayes", "TTM"],
-        enhanced_models=["TTMFineTuned", "TTMAugmented", "TTMEnsemble"]
+        models=["ExponentialSmoothing"],
+        enhanced_models=["ExponentialSmoothing_Enhanced", "ExponentialSmoothing_Parallel", "ExponentialSmoothing_Cached"]
     )
 
 
@@ -150,7 +150,7 @@ def _load_data_for_metric(instance_name: str, metric: str, config: Dict[str, Any
 
 def _run_forecasting_pipeline(series: pd.Series, config: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Run the complete forecasting pipeline for a time series.
+    Run the optimized exponential smoothing forecasting pipeline for a time series.
 
     Args:
         series: Time series data
@@ -159,26 +159,30 @@ def _run_forecasting_pipeline(series: pd.Series, config: Dict[str, Any]) -> Dict
     Returns:
         Forecasting results dictionary
     """
-    # Initialize forecaster
-    forecaster = DailyCPUForecaster(
+    # Calculate test size from the series length (30% default)
+    test_size = max(14, int(len(series) * 0.3))  # Minimum 14 days test
+
+    # Initialize exponential smoothing forecaster with optimizations
+    forecaster = ExponentialSmoothingForecaster(
         series,
         forecast_horizon=config['forecast_horizon'],
-        use_enhanced_ttm=config['use_enhanced_ttm']
+        test_size=test_size
     )
 
     # Configure plotting for API usage
     forecaster.configure_plotting(save_plots=settings.SAVE_PLOTS, show_plots=settings.SHOW_PLOTS)
 
-    # Run forecasting
-    forecaster.run_all_models()
+    # Run optimized forecasting
+    forecaster.run_forecast()
 
-    # Generate plots
-    forecaster.plot_results()
-    forecaster.plot_model_comparison()
-    forecaster.create_interactive_plot()
+    # Generate plots if enabled
+    if settings.SAVE_PLOTS or settings.SHOW_PLOTS:
+        forecaster.plot_results()
+        forecaster.plot_model_comparison()
+        forecaster.create_interactive_plot()
 
-    # Get best model predictions
-    return forecaster.get_best_model_predictions()
+    # Get model predictions
+    return forecaster.get_model_predictions()
 
 
 
@@ -275,98 +279,6 @@ async def forecast_batch_metrics(requests: List[ForecastRequest]):
             })
 
     return {"results": results}
-
-
-# @app.post("/forecast/test", response_model=TestForecastResponse)
-# async def test_forecast_with_local_data(request: TestForecastRequest):
-#     """
-#     Test forecasting endpoint using local data files
-
-#     Uses existing data.json or data-long.json files for testing without external dependencies
-#     """
-#     try:
-#         # Use provided values or defaults from config
-#         forecast_horizon = request.forecast_horizon or settings.DEFAULT_FORECAST_HORIZON
-#         use_enhanced_ttm = request.use_enhanced_ttm if request.use_enhanced_ttm is not None else settings.DEFAULT_USE_ENHANCED_TTM
-
-#         # Validate data file choice
-#         if request.data_file not in ["data.json", "data-long.json"]:
-#             raise HTTPException(status_code=400, detail="data_file must be 'data.json' or 'data-long.json'")
-
-#         # Load data from local file
-#         try:
-#             series = DataLoader.load_data(f"./{request.data_file}")
-#         except Exception as e:
-#             raise HTTPException(status_code=400, detail=f"Failed to load local data from {request.data_file}: {str(e)}")
-
-#         # Initialize forecaster
-#         forecaster = DailyCPUForecaster(
-#             series,
-#             forecast_horizon=forecast_horizon,
-#             use_enhanced_ttm=use_enhanced_ttm
-#         )
-
-#         # Configure plotting for API usage
-#         forecaster.configure_plotting(save_plots=settings.SAVE_PLOTS, show_plots=settings.SHOW_PLOTS)
-
-#         # Run forecasting
-#         forecaster.run_all_models()
-
-#         # Generate plots
-#         forecaster.plot_results()
-#         forecaster.plot_model_comparison()
-#         forecaster.create_interactive_plot()
-
-#         # Get best model predictions
-#         predictions_result = forecaster.get_best_model_predictions()
-
-#         if 'error' in predictions_result:
-#             raise HTTPException(status_code=500, detail=f"Forecasting failed: {predictions_result['error']}")
-
-#         # Format response
-#         metadata = predictions_result.get('metadata', {})
-#         predictions = []
-
-#         for pred in predictions_result['predictions']:
-#             # Parse prediction format - assuming it's a string like "2024-01-01: 45.2 [40.1, 50.3]"
-#             # You may need to adjust this based on actual format
-#             prediction_point = PredictionPoint(
-#                 date=pred.get('date', ''),
-#                 value=pred.get('value', 0.0),
-#                 lower_ci=pred.get('lower_bound'),
-#                 upper_ci=pred.get('upper_bound')
-#             )
-#             predictions.append(prediction_point)
-
-#         model_perf = metadata.get('model_performance', {})
-
-#         # Create test metric forecast (using 'test' as metric name)
-#         metric_forecast = MetricForecast(
-#             metric="test",
-#             predictions=predictions,
-#             model_name=metadata.get('model_name', 'Unknown'),
-#             model_performance=ModelPerformance(
-#                 mae=model_perf.get('mae', 0.0),
-#                 rmse=model_perf.get('rmse', 0.0),
-#                 mape=model_perf.get('mape', 0.0)
-#             ),
-#             has_confidence_intervals=metadata.get('has_confidence_intervals', False),
-#             total_models_compared=metadata.get('total_models_compared', 0),
-#             forecast_horizon=forecast_horizon
-#         )
-
-#         return TestForecastResponse(
-#             data_file=request.data_file,
-#             data_points=len(series),
-#             forecasts=[metric_forecast],
-#             total_forecasts=1,
-#             generated_at=datetime.now().isoformat()
-#         )
-
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

@@ -2,6 +2,7 @@
 Main entry point for Exponential Smoothing Time Series Forecasting
 """
 
+from typing import List
 from forecaster import ExponentialSmoothingForecaster
 from utils.data_loader import DataLoader
 from utils.logging_config import get_logger
@@ -11,7 +12,8 @@ logger = get_logger(__name__)
 
 def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 30,
                      test_split: float = 0.3, generate_plots: bool = True,
-                     save_plots: bool = True, show_plots: bool = False, **kwargs):
+                     save_plots: bool = True, show_plots: bool = False,
+                     parallel_cv: bool = True, **kwargs):
     """
     Load data and run Exponential Smoothing forecasting
 
@@ -22,6 +24,7 @@ def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 
         generate_plots: Whether to generate plots at all (for performance)
         save_plots: Whether to save plots to disk
         show_plots: Whether to display plots interactively
+        parallel_cv: Whether to use parallel cross-validation for better performance
         **kwargs: Additional arguments for URL loading (timeout, headers)
     """
     # Load data (auto-detects file vs URL)
@@ -29,10 +32,13 @@ def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 
 
     logger.info(f"Loaded {len(series)} days of data from {series.index.min()} to {series.index.max()}")
 
-    # Initialize forecaster and run model with configurable test data split
+    # Initialize forecaster and run model with configurable test data split and optimizations
     test_size = int(len(series) * test_split)
     forecaster = ExponentialSmoothingForecaster(series, forecast_horizon=forecast_horizon,
                                                test_size=test_size)
+
+    # Configure model optimizations
+    forecaster.model.parallel_cv = parallel_cv
 
     # Configure plotting behavior
     if generate_plots:
@@ -106,9 +112,40 @@ def get_predictions_only(data_source: str = './data.json', forecast_horizon: int
         forecast_horizon=forecast_horizon,
         test_split=test_split,
         generate_plots=False,
+        parallel_cv=True,  # Enable optimizations for speed
         **kwargs
     )
     return forecaster.get_model_predictions()
+
+
+def get_batch_predictions(data_source: str = './data.json', horizons: List[int] = [7, 14, 30],
+                         test_split: float = 0.3, **kwargs):
+    """
+    Generate optimized batch predictions for multiple forecast horizons
+
+    Args:
+        data_source: File path or URL to data
+        horizons: List of forecast horizons in days
+        test_split: Fraction of data to use for testing
+        **kwargs: Additional arguments for URL loading
+
+    Returns:
+        Dict with batch predictions for all horizons
+    """
+    forecaster = load_and_forecast(
+        data_source=data_source,
+        forecast_horizon=max(horizons),  # Use max horizon for training
+        test_split=test_split,
+        generate_plots=False,
+        parallel_cv=True,
+        **kwargs
+    )
+
+    # Get batch forecasts
+    batch_results = forecaster.get_batch_forecasts(horizons)
+
+    logger.info(f"Generated batch predictions for horizons: {horizons}")
+    return batch_results
 
 
 def load_and_forecast_from_url(url: str, forecast_horizon: int = 30,

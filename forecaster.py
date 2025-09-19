@@ -46,8 +46,11 @@ class ExponentialSmoothingForecaster:
         self.results = {}
         self.visualizer = ForecastVisualizer(save_plots=True, show_plots=False, metric_name='cpu')
 
-        # Initialize the Exponential Smoothing model
-        self.model = ExponentialSmoothingModel()
+        # Initialize the Exponential Smoothing model with optimizations
+        self.model = ExponentialSmoothingModel(
+            parallel_cv=True,  # Enable parallel cross-validation
+            max_workers=None   # Auto-detect optimal worker count
+        )
 
         logger.info("Loaded Exponential Smoothing model")
 
@@ -178,3 +181,57 @@ class ExponentialSmoothingForecaster:
             output_dir=output_dir,
             metric_name=metric_name
         )
+
+    def get_batch_forecasts(self, horizons: List[int], include_confidence_intervals: bool = True) -> Dict[int, Dict]:
+        """Get batch forecasts for multiple horizons efficiently"""
+        if not self.results or 'ExponentialSmoothing' not in self.results:
+            return {"error": "Model not available or results empty"}
+
+        try:
+            # Fit model on training data if not already fitted
+            if not self.model.is_fitted:
+                self.model.fit(self.train)
+
+            # Get batch forecasts
+            batch_forecasts = self.model.forecast_batch(horizons)
+
+            # Format results
+            results = {}
+            for horizon in horizons:
+                if horizon in batch_forecasts:
+                    # Create future dates for this horizon
+                    future_dates = pd.date_range(
+                        self.data.index[-1] + timedelta(days=1),
+                        periods=horizon
+                    )
+
+                    # Format predictions
+                    predictions = []
+                    for i, (date, value) in enumerate(zip(future_dates, batch_forecasts[horizon])):
+                        prediction = {
+                            'date': date.strftime('%Y-%m-%d'),
+                            'value': float(value)
+                        }
+                        predictions.append(prediction)
+
+                    results[horizon] = {
+                        'predictions': predictions,
+                        'horizon_days': horizon
+                    }
+
+                    # Add confidence intervals if requested
+                    if include_confidence_intervals:
+                        try:
+                            intervals = self.model.forecast_with_intervals(horizon)
+                            if 'lower_0.95' in intervals and 'upper_0.95' in intervals:
+                                for i, prediction in enumerate(results[horizon]['predictions']):
+                                    prediction['lower_bound'] = float(intervals['lower_0.95'][i])
+                                    prediction['upper_bound'] = float(intervals['upper_0.95'][i])
+                        except Exception as e:
+                            logger.warning(f"Could not add confidence intervals for horizon {horizon}: {e}")
+
+            return results
+
+        except Exception as e:
+            logger.error(f"Batch forecasting failed: {e}")
+            return {"error": f"Batch forecasting failed: {str(e)}"}
