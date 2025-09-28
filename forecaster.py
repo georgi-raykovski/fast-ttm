@@ -47,10 +47,11 @@ class ExponentialSmoothingForecaster:
         self.metric_name = 'metric'  # Default, will be updated when configured
         self.visualizer = ForecastVisualizer(save_plots=True, show_plots=False, metric_name=self.metric_name)
 
-        # Initialize the Exponential Smoothing model with fixed configuration for maximum performance
+        # Initialize the Peak-Enhanced Exponential Smoothing model
         self.model = ExponentialSmoothingModel(
-            parallel_cv=False,  # Disabled for performance
-            max_workers=1       # Single worker for simplicity
+            parallel_cv=False,     # Disabled for performance
+            max_workers=1,         # Single worker for simplicity
+            peak_enhancement=True  # Enable peak detection and enhancement
         )
 
         logger.info("Loaded Exponential Smoothing model")
