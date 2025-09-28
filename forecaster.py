@@ -4,7 +4,7 @@ Exponential Smoothing forecaster class
 
 import pandas as pd
 from datetime import timedelta
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, List
 from models import ExponentialSmoothingModel
 from visualization import ForecastVisualizer
 from utils.logging_config import get_logger
@@ -44,12 +44,13 @@ class ExponentialSmoothingForecaster:
 
         # Initialize components
         self.results = {}
-        self.visualizer = ForecastVisualizer(save_plots=True, show_plots=False, metric_name='cpu')
+        self.metric_name = 'metric'  # Default, will be updated when configured
+        self.visualizer = ForecastVisualizer(save_plots=True, show_plots=False, metric_name=self.metric_name)
 
-        # Initialize the Exponential Smoothing model with optimizations
+        # Initialize the Exponential Smoothing model with fixed configuration for maximum performance
         self.model = ExponentialSmoothingModel(
-            parallel_cv=True,  # Enable parallel cross-validation
-            max_workers=None   # Auto-detect optimal worker count
+            parallel_cv=False,  # Disabled for performance
+            max_workers=1       # Single worker for simplicity
         )
 
         logger.info("Loaded Exponential Smoothing model")
@@ -105,18 +106,18 @@ class ExponentialSmoothingForecaster:
     def plot_results(self):
         """Plot individual model forecasts (separate plots)"""
         self.visualizer.plot_results(
-            self.data, self.results, self.forecast_horizon, self.test_size
+            self.data, self.results, self.forecast_horizon, self.test_size, self.metric_name
         )
 
 
     def plot_model_comparison(self):
         """Plot model performance comparison bar charts"""
-        self.visualizer.plot_model_comparison(self.results)
+        self.visualizer.plot_model_comparison(self.results, self.metric_name)
 
     def create_interactive_plot(self):
         """Create interactive HTML plot with zoom and pan"""
         self.visualizer.create_interactive_plot(
-            self.data, self.results, self.forecast_horizon, self.test_size
+            self.data, self.results, self.forecast_horizon, self.test_size, self.metric_name
         )
 
     def get_model_name(self) -> str:
@@ -173,8 +174,9 @@ class ExponentialSmoothingForecaster:
         return output
 
     def configure_plotting(self, save_plots: bool = True, show_plots: bool = False,
-                          output_dir: str = './plots', metric_name: str = 'cpu'):
+                          output_dir: str = './plots', metric_name: str = 'metric'):
         """Configure plotting behavior"""
+        self.metric_name = metric_name
         self.visualizer = ForecastVisualizer(
             save_plots=save_plots,
             show_plots=show_plots,

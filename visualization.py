@@ -43,8 +43,11 @@ class ForecastVisualizer:
             os.makedirs(output_dir)
 
     def plot_results(self, data: pd.Series, results: Dict[str, Any], forecast_horizon: int,
-                    test_size: int) -> None:
+                    test_size: int, metric_name: Optional[str] = None) -> None:
         """Plot historical data and forecasting results with confidence intervals"""
+
+        # Use provided metric name or fall back to instance variable
+        display_metric = metric_name or self.metric_name
 
         # Create future dates and test dates
         future_dates = pd.date_range(
@@ -68,7 +71,7 @@ class ForecastVisualizer:
                 ax = axes[i]
 
                 # Plot historical data
-                ax.plot(data.index, data.values, label=f'Historical {self.metric_name.upper()}',
+                ax.plot(data.index, data.values, label=f'Historical {display_metric.upper()}',
                        color='blue', linewidth=2)
 
                 # Plot test forecasts
@@ -81,7 +84,7 @@ class ForecastVisualizer:
 
                 ax.set_title(f"{name} Model Forecast", fontsize=14)
                 ax.set_xlabel("Date", fontsize=12)
-                ax.set_ylabel(f"{self.metric_name.upper()} Usage (%)", fontsize=12)
+                ax.set_ylabel(f"{display_metric.upper()} Usage (%)", fontsize=12)
                 ax.legend()
                 ax.grid(True, alpha=0.3)
 
@@ -100,7 +103,7 @@ class ForecastVisualizer:
 
             # Save plot
             if self.save_plots:
-                filename = f'{self.output_dir}/{self.metric_name}_individual_models.png'
+                filename = f'{self.output_dir}/{display_metric.lower().replace(" ", "_")}_individual_models.png'
                 plt.savefig(filename, dpi=300, bbox_inches='tight')
                 print(f"Individual models plot saved to {filename}")
 
@@ -119,7 +122,7 @@ class ForecastVisualizer:
                 ax = axes[i]
 
                 # Plot historical data
-                ax.plot(data.index, data.values, label=f'Historical {self.metric_name.upper()}',
+                ax.plot(data.index, data.values, label=f'Historical {display_metric.upper()}',
                        color='blue', linewidth=2)
 
                 # Plot test forecasts
@@ -139,7 +142,7 @@ class ForecastVisualizer:
 
                 ax.set_title(f"{name} Forecast with Confidence Intervals", fontsize=14)
                 ax.set_xlabel("Date", fontsize=12)
-                ax.set_ylabel(f"{self.metric_name.upper()} Usage (%)", fontsize=12)
+                ax.set_ylabel(f"{display_metric.upper()} Usage (%)", fontsize=12)
                 ax.legend()
                 ax.grid(True, alpha=0.3)
 
@@ -158,7 +161,7 @@ class ForecastVisualizer:
 
             # Save plot
             if self.save_plots:
-                filename = f'{self.output_dir}/{self.metric_name}_ensemble_models.png'
+                filename = f'{self.output_dir}/{display_metric.lower().replace(" ", "_")}_ensemble_models.png'
                 plt.savefig(filename, dpi=300, bbox_inches='tight')
                 print(f"Ensemble models plot saved to {filename}")
 
@@ -167,8 +170,11 @@ class ForecastVisualizer:
             else:
                 plt.close(fig)
 
-    def plot_model_comparison(self, results: Dict[str, Any]) -> None:
+    def plot_model_comparison(self, results: Dict[str, Any], metric_name: Optional[str] = None) -> None:
         """Create a bar chart comparing model performance"""
+
+        # Use provided metric name or fall back to instance variable
+        display_metric = metric_name or self.metric_name
 
         models = []
         maes = []
@@ -204,13 +210,13 @@ class ForecastVisualizer:
         ax3.set_xticks(range(len(models)))
         ax3.set_xticklabels(models, rotation=45, ha='right')
 
-        plt.suptitle(f'{self.metric_name.upper()} Forecasting Model Performance Comparison', fontsize=16)
+        plt.suptitle(f'{display_metric.upper()} Forecasting Model Performance Comparison', fontsize=16)
 
         plt.tight_layout()
 
         # Save plot
         if self.save_plots:
-            filename = f'{self.output_dir}/{self.metric_name}_model_comparison.png'
+            filename = f'{self.output_dir}/{display_metric.lower().replace(" ", "_")}_model_comparison.png'
             plt.savefig(filename, dpi=300, bbox_inches='tight')
             print(f"Model comparison plot saved to {filename}")
 
@@ -234,8 +240,11 @@ class ForecastVisualizer:
         return df
 
     def create_interactive_plot(self, data: pd.Series, results: Dict[str, Any], forecast_horizon: int,
-                              test_size: int) -> None:
+                              test_size: int, metric_name: Optional[str] = None) -> None:
         """Create an interactive HTML plot using plotly (if available)"""
+
+        # Use provided metric name or fall back to instance variable
+        display_metric = metric_name or self.metric_name
         try:
             import plotly.graph_objects as go
             from plotly.subplots import make_subplots
@@ -258,7 +267,7 @@ class ForecastVisualizer:
             for i, (name, res) in enumerate(results.items(), 1):
                 # Historical data
                 fig.add_trace(
-                    go.Scatter(x=data.index, y=data.values, name=f'{name} - Historical {self.metric_name.upper()}',
+                    go.Scatter(x=data.index, y=data.values, name=f'{name} - Historical {display_metric.upper()}',
                               line=dict(color='blue', width=2), showlegend=(i == 1)),
                     row=i, col=1
                 )
@@ -309,19 +318,19 @@ class ForecastVisualizer:
 
             # Update layout
             fig.update_layout(
-                title=f"Interactive {self.metric_name.upper()} Forecasting Results",
+                title=f"Interactive {display_metric.upper()} Forecasting Results",
                 height=400 * len(results),
                 showlegend=True
             )
 
             for i in range(len(results)):
-                fig.update_yaxes(title_text=f"{self.metric_name.upper()} Usage (%)", row=i+1, col=1)
+                fig.update_yaxes(title_text=f"{display_metric.upper()} Usage (%)", row=i+1, col=1)
 
             fig.update_xaxes(title_text="Date", row=len(results), col=1)
 
             # Save as HTML
             if self.save_plots:
-                output_file = f'{self.output_dir}/{self.metric_name}_interactive_forecast.html'
+                output_file = f'{self.output_dir}/{display_metric.lower().replace(" ", "_")}_interactive_forecast.html'
                 pyo.plot(fig, filename=output_file, auto_open=False)
                 print(f"Interactive plot saved to {output_file}")
             elif self.show_plots:

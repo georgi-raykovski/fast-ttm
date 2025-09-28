@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 30,
                      test_split: float = 0.3, generate_plots: bool = True,
                      save_plots: bool = True, show_plots: bool = False,
-                     parallel_cv: bool = True, **kwargs):
+                     parallel_cv: bool = False, **kwargs):
     """
     Load data and run Exponential Smoothing forecasting
 
@@ -42,7 +42,21 @@ def load_and_forecast(data_source: str = './data.json', forecast_horizon: int = 
 
     # Configure plotting behavior
     if generate_plots:
-        forecaster.configure_plotting(save_plots=save_plots, show_plots=show_plots)
+        # Try to detect metric name from data source filename
+        metric_name = 'metric'
+        if isinstance(data_source, str):
+            if 'cpu' in data_source.lower():
+                metric_name = 'cpu'
+            elif 'memory' in data_source.lower():
+                metric_name = 'memory'
+            elif 'disk' in data_source.lower():
+                metric_name = 'disk'
+
+        forecaster.configure_plotting(
+            save_plots=save_plots,
+            show_plots=show_plots,
+            metric_name=metric_name
+        )
 
     forecaster.run_forecast()
 
@@ -112,7 +126,7 @@ def get_predictions_only(data_source: str = './data.json', forecast_horizon: int
         forecast_horizon=forecast_horizon,
         test_split=test_split,
         generate_plots=False,
-        parallel_cv=True,  # Enable optimizations for speed
+        parallel_cv=False,  # Disabled for simplicity and performance
         **kwargs
     )
     return forecaster.get_model_predictions()
@@ -137,7 +151,7 @@ def get_batch_predictions(data_source: str = './data.json', horizons: List[int] 
         forecast_horizon=max(horizons),  # Use max horizon for training
         test_split=test_split,
         generate_plots=False,
-        parallel_cv=True,
+        parallel_cv=False,
         **kwargs
     )
 

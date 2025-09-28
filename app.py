@@ -169,8 +169,12 @@ def _run_forecasting_pipeline(series: pd.Series, config: Dict[str, Any]) -> Dict
         test_size=test_size
     )
 
-    # Configure plotting for API usage
-    forecaster.configure_plotting(save_plots=settings.SAVE_PLOTS, show_plots=settings.SHOW_PLOTS)
+    # Configure plotting for API usage with correct metric name
+    forecaster.configure_plotting(
+        save_plots=settings.SAVE_PLOTS,
+        show_plots=settings.SHOW_PLOTS,
+        metric_name=config.get('metric_name', 'metric')  # Use the actual metric name
+    )
 
     # Run optimized forecasting
     forecaster.run_forecast()
@@ -211,8 +215,12 @@ def _process_single_metric(instance_name: str, metric: str, config: Dict[str, An
                 metric, data_url, e, forecast_horizon
             )
 
+        # Add metric name to config for proper labeling
+        config_with_metric = config.copy()
+        config_with_metric['metric_name'] = metric
+
         # Run forecasting pipeline
-        predictions_result = _run_forecasting_pipeline(series, config)
+        predictions_result = _run_forecasting_pipeline(series, config_with_metric)
 
         if 'error' in predictions_result:
             return ForecastErrorHandler.handle_prediction_error(
